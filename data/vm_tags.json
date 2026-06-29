@@ -1,0 +1,338 @@
+{
+  "ahbtest": {
+    "application": "finops",
+    "app_owner": "maha",
+    "portfolio_owner": "",
+    "department": "testtag"
+  },
+  "azure-patch-mangement-vm": {
+    "application": "App4",
+    "app_owner": "Rob",
+    "portfolio_owner": "Bryan",
+    "department": "testtag"
+  },
+  "BeforeDemo": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "demoinstance": {
+    "application": "App5",
+    "app_owner": "Hayden",
+    "portfolio_owner": "Bryan",
+    "department": "testtag"
+  },
+  "oracle-vm-vm-report": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "patch-mgmt-demo-east-us-2": {
+    "application": "App6",
+    "app_owner": "Chris",
+    "portfolio_owner": "Stephen",
+    "department": "testtag"
+  },
+  "TestDemoVM": {
+    "application": "App4",
+    "app_owner": "Chris",
+    "portfolio_owner": "Stephen",
+    "department": "testtag"
+  },
+  "windows-vm-multi-cloud-vm-report": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "test-new-machine": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": "testtag"
+  },
+  "test-new-machine-2": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": "testtag"
+  },
+  "ruletest": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "cs-prod-ir-vm-india": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "vm0-cspbi": {
+    "application": "PowerBI",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "cspbi-prod-ir-Europe": {
+    "application": "PowerBI",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "analytics-jump-host": {
+    "application": "untagged",
+    "app_owner": "Devops",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "migration-testing-VM": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": "testtag"
+  },
+  "testtruecost": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "Testing-2503-Patch-Report": {
+    "application": "untagged",
+    "app_owner": "Gayathri",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "idletesting": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "TestUAMIVM": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "KCCSDEVCORE": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "corestack-openvpn-India": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "corestack-openvpn": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "patch-report-aug22": {
+    "application": "untagged",
+    "app_owner": "Gayathri",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "patchReport-NewVm-Sep04": {
+    "application": "untagged",
+    "app_owner": "Gayathri",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "2503-patch-UAT": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "Test-UAMI": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "windows-vm-logical-disk": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "winvm-test": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "Cs-onboarding-application": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "vault-testing-vm": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "site-recovery-VM": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "alert-testing-vm": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "alert-testing-vm-sample": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "utilizationtest": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "cs-roi-application": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "tfwus-snow-01": {
+    "application": "servicenow",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "tfwus-snow-02": {
+    "application": "servicenow",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "wus-NetSPI002": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "wus-NetSPI01": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "wusdevebol01": {
+    "application": "ebol",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "wusdevtfvm001": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "wus2devoprapp01": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team-2026": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team-windows": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team-2026-1": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "ironbank": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "patch-report-aug25": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team-2nd": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "qa-automation-1": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team-27-02": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "Vulern": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team-29th-linux": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "NewVM-totest-patchReport": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  },
+  "core-team-29th": {
+    "application": "untagged",
+    "app_owner": "",
+    "portfolio_owner": "",
+    "department": ""
+  }
+}

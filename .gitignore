@@ -1,0 +1,22 @@
+venv/
+__pycache__/
+*.pyc
+corestack_data/
+*.bson
+*.bson.gz
+.env
+*.pem
+logs/*.log
+
+# Raw data - too large / sensitive
+data/corestack_vm_metrics.csv
+telemetry.csv
+action_log.csv
+forecast_plot.png
+data/agentic_finops.db
+data/agentic_finops.db-*
+
+# Keep augmented dataset and placeholders
+!data/augmented_vm_metrics.csv
+!data/.gitkeep
+!logs/.gitkeep
