@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from datetime import datetime
+from pathlib import Path
 import random
 
 st.set_page_config(page_title="Proactive Cloud FinOps", page_icon="☁️", layout="wide")
@@ -23,8 +24,10 @@ def load_data():
 
 @st.cache_data
 def load_original():
-    df = pd.read_csv("data/corestack_vm_metrics.csv", parse_dates=["timestamp"])
-    return df
+    path = Path("data/corestack_vm_metrics.csv")
+    if not path.exists():
+        return None
+    return pd.read_csv(path, parse_dates=["timestamp"])
 
 @st.cache_data
 def classify_vms(df):
@@ -291,32 +294,59 @@ We analyzed spike characteristics from real production VMs (`cspbi-prod-ir-Europ
 and injected statistically similar sustained burst patterns into 26 low_variable VMs.
 """)
 
-col1, col2, col3 = st.columns(3)
-orig_spikes = len(orig_df[orig_df["cpu_percent"] > 20])
 aug_spikes = len(df[df["cpu_percent"] > 20])
-col1.metric("Spike Events Before", orig_spikes)
-col2.metric("Spike Events After", aug_spikes)
-col3.metric("Improvement", f"{aug_spikes/orig_spikes:.1f}x")
+augmented_vm_count = df[df["augmented"] == True]["resource_id"].nunique() if "augmented" in df.columns else 0
 
-aug_vm = st.selectbox("Compare VM before/after augmentation",
-                      sorted(df[df["augmented"]==True]["resource_id"].unique())
-                      if "augmented" in df.columns else ["analytics-jump-host"])
+if orig_df is None:
+    st.info(
+        "`data/corestack_vm_metrics.csv` is not included in this clean demo repo. "
+        "The dashboard is using the checked-in augmented dataset, which is enough for clone-and-run demos."
+    )
+    col1, col2 = st.columns(2)
+    col1.metric("Spike Events in Demo Dataset", aug_spikes)
+    col2.metric("Augmented VMs", augmented_vm_count)
 
-orig_vm_data = orig_df[orig_df["resource_id"]==aug_vm].sort_values("timestamp")
-aug_vm_data = df[df["resource_id"]==aug_vm].sort_values("timestamp")
+    aug_vm = st.selectbox(
+        "Inspect augmented VM signal",
+        sorted(df[df["augmented"] == True]["resource_id"].unique())
+        if "augmented" in df.columns else sorted(df["resource_id"].unique()),
+    )
+    aug_vm_data = df[df["resource_id"] == aug_vm].sort_values("timestamp")
 
-fig_aug, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 5))
-ax1.plot(orig_vm_data["timestamp"], orig_vm_data["cpu_percent"],
-         color="steelblue", linewidth=0.8)
-ax1.set_title(f"{aug_vm} — Original (low_variable)")
-ax1.set_ylabel("CPU %")
-ax2.plot(aug_vm_data["timestamp"], aug_vm_data["cpu_percent"],
-         color="tomato", linewidth=0.8)
-ax2.set_title(f"{aug_vm} — Augmented (regime_change quality)")
-ax2.set_ylabel("CPU %")
-plt.tight_layout()
-st.pyplot(fig_aug)
-plt.close()
+    fig_aug, ax = plt.subplots(figsize=(13, 3.5))
+    ax.plot(aug_vm_data["timestamp"], aug_vm_data["cpu_percent"], color="tomato", linewidth=0.8)
+    ax.set_title(f"{aug_vm} - Augmented CPU signal")
+    ax.set_ylabel("CPU %")
+    plt.tight_layout()
+    st.pyplot(fig_aug)
+    plt.close()
+else:
+    col1, col2, col3 = st.columns(3)
+    orig_spikes = len(orig_df[orig_df["cpu_percent"] > 20])
+    col1.metric("Spike Events Before", orig_spikes)
+    col2.metric("Spike Events After", aug_spikes)
+    col3.metric("Improvement", f"{aug_spikes / max(orig_spikes, 1):.1f}x")
+
+    aug_vm = st.selectbox(
+        "Compare VM before/after augmentation",
+        sorted(df[df["augmented"] == True]["resource_id"].unique())
+        if "augmented" in df.columns else ["analytics-jump-host"],
+    )
+
+    orig_vm_data = orig_df[orig_df["resource_id"] == aug_vm].sort_values("timestamp")
+    aug_vm_data = df[df["resource_id"] == aug_vm].sort_values("timestamp")
+
+    fig_aug, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 5))
+    ax1.plot(orig_vm_data["timestamp"], orig_vm_data["cpu_percent"], color="steelblue", linewidth=0.8)
+    ax1.set_title(f"{aug_vm} - Original")
+    ax1.set_ylabel("CPU %")
+    ax2.plot(aug_vm_data["timestamp"], aug_vm_data["cpu_percent"], color="tomato", linewidth=0.8)
+    ax2.set_title(f"{aug_vm} - Augmented")
+    ax2.set_ylabel("CPU %")
+    plt.tight_layout()
+    st.pyplot(fig_aug)
+    plt.close()
+
 st.divider()
 
 # --- Workload Classification ---
