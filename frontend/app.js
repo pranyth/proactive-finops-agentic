@@ -87,11 +87,16 @@ function renderAnswer(answer) {
 }
 
 function renderProfile(profile) {
-  $("#metric-vms").textContent = fmt(profile.vm_count);
-  $("#metric-vm-rows").textContent = fmt(profile.vm_rows);
+  $("#metric-vms").textContent = fmt(profile.provider_count || profile.vm_count);
+  $("#metric-vm-rows").textContent = fmt(profile.multicloud_rows || profile.vm_rows);
 
   renderKeyValueGrid($("#profile-grid"), [
+    { label: "Project Title", value: profile.primary_title || "Agentic Proactive FinOps Governance" },
     { label: "Dataset", value: profile.dataset_name },
+    { label: "Platform Scope", value: profile.platform_scope || "single_cloud" },
+    { label: "Providers", value: Object.entries(profile.providers || {}).map(([key, value]) => `${key}: ${value}`).join(", ") },
+    { label: "Source Systems", value: Object.keys(profile.source_systems || {}).join(", ") },
+    { label: "Schema Versions", value: (profile.schema_versions || []).join(", ") },
     { label: "Types", value: (profile.dataset_types || []).join(", ") },
     { label: "Time Range", value: `${profile.time_range?.start || "-"} -> ${profile.time_range?.end || "-"}` },
     { label: "Applications", value: (profile.applications || []).join(", ") },
@@ -99,6 +104,7 @@ function renderProfile(profile) {
     { label: "Enterprise Context", value: profile.enterprise_context_available ? "Available" : "Missing" },
     { label: "Raw CoreStack BSON", value: profile.raw_corestack_bson },
     { label: "Raw BSON Required", value: profile.raw_corestack_required },
+    { label: "Evaluation Note", value: profile.evaluation_note },
   ], "profile-item");
 
   const sourceRows = Object.entries(profile.source_mix || {}).map(([key, value]) => ({ label: key, value }));

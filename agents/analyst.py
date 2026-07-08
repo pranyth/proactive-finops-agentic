@@ -1,4 +1,4 @@
-﻿"""Main FinOps Analyst Agent for the Vijay demo.
+"""Main FinOps Analyst Agent for the Vijay demo.
 
 The public contract is intentionally one visible entry point:
 
@@ -29,6 +29,8 @@ INCIDENTS_CSV = Path("data/incident_history.csv")
 ACTIONS_CSV = Path("data/action_history.csv")
 PIPELINES_CSV = Path("data/pipeline_runs.csv")
 PROVENANCE_CSV = Path("data/data_provenance.csv")
+MULTICLOUD_CSV = Path("data/multicloud_vm_metrics.csv")
+OPEN_TRACE_PATTERNS_CSV = Path("data/open_trace_patterns.csv")
 RAW_CORESTACK_DIR = Path("corestack_data")
 
 
@@ -54,34 +56,49 @@ class DatasetProfiler:
         action_df = self._load_csv(ACTIONS_CSV, parse_dates=["created_at"])
         pipeline_df = self._load_csv(PIPELINES_CSV, parse_dates=["created_at"])
         provenance_df = self._load_csv(PROVENANCE_CSV)
+        multicloud_df = self._load_csv(MULTICLOUD_CSV, parse_dates=["timestamp"])
+        patterns_df = self._load_csv(OPEN_TRACE_PATTERNS_CSV)
         tags = self._load_tags()
 
         tagged_vms = [vm for vm, info in tags.items() if info.get("application") != "untagged"]
         dataset_types = ["VM metrics", "DB metrics", "VM tags"]
-        if not inventory_df.empty:
-            dataset_types.append("Enterprise VM inventory")
-        if not cost_df.empty:
-            dataset_types.append("Cost metrics")
-        if not incident_df.empty:
-            dataset_types.append("Incident history")
-        if not action_df.empty:
-            dataset_types.append("Action history")
-        if not pipeline_df.empty:
-            dataset_types.append("Pipeline runs")
-        if not provenance_df.empty:
-            dataset_types.append("Data provenance")
+        optional_types = [
+            (inventory_df, "Enterprise VM inventory"),
+            (cost_df, "Cost metrics"),
+            (incident_df, "Incident history"),
+            (action_df, "Action history"),
+            (pipeline_df, "Pipeline runs"),
+            (multicloud_df, "Normalized multi-cloud VM telemetry"),
+            (patterns_df, "Open-source trace pattern references"),
+            (provenance_df, "Data provenance"),
+        ]
+        dataset_types.extend(name for frame, name in optional_types if not frame.empty)
 
         source_files = [str(VM_CSV), str(DB_CSV), str(TAGS_JSON)]
-        source_files.extend(str(path) for path in [INVENTORY_CSV, COST_CSV, INCIDENTS_CSV, ACTIONS_CSV, PIPELINES_CSV, PROVENANCE_CSV] if path.exists())
+        source_files.extend(str(path) for path in [
+            INVENTORY_CSV, COST_CSV, INCIDENTS_CSV, ACTIONS_CSV, PIPELINES_CSV,
+            MULTICLOUD_CSV, OPEN_TRACE_PATTERNS_CSV, PROVENANCE_CSV,
+        ] if path.exists())
+
+        provider_counts = self._counts(multicloud_df, "provider")
+        source_system_counts = self._counts(multicloud_df, "source_system")
+        source_type_counts = self._counts(multicloud_df, "source_type")
+        schema_versions = sorted(multicloud_df["schema_version"].dropna().unique().tolist()) if "schema_version" in multicloud_df else []
 
         return {
             "dataset_name": "current_demo_data",
+            "platform_scope": "multi_cloud",
+            "primary_title": "Agentic Proactive FinOps Governance for Multi-Cloud Telemetry",
+            "evaluation_note": "CoreStack-derived Azure telemetry plus AWS/GCP telemetry generated from open-source workload trace patterns.",
             "dataset_types": dataset_types,
             "source_files": source_files,
             "source_mix": self._source_mix(provenance_df),
+            "multi_cloud_available": bool(not multicloud_df.empty),
             "enterprise_context_available": bool(not inventory_df.empty and not cost_df.empty),
             "vm_rows": int(len(vm_df)),
             "db_rows": int(len(db_df)),
+            "multicloud_rows": int(len(multicloud_df)),
+            "open_trace_pattern_rows": int(len(patterns_df)),
             "inventory_rows": int(len(inventory_df)),
             "cost_rows": int(len(cost_df)),
             "incident_rows": int(len(incident_df)),
@@ -89,6 +106,12 @@ class DatasetProfiler:
             "pipeline_rows": int(len(pipeline_df)),
             "provenance_rows": int(len(provenance_df)),
             "vm_count": int(vm_df["resource_id"].nunique()) if "resource_id" in vm_df else 0,
+            "multicloud_resource_count": int(multicloud_df["resource_id"].nunique()) if "resource_id" in multicloud_df else 0,
+            "provider_count": int(multicloud_df["provider"].nunique()) if "provider" in multicloud_df else 0,
+            "providers": provider_counts,
+            "source_systems": source_system_counts,
+            "multicloud_source_types": source_type_counts,
+            "schema_versions": schema_versions,
             "db_vm_count": int(db_df["resource_id"].nunique()) if "resource_id" in db_df else 0,
             "tag_records": int(len(tags)),
             "application_tagged_vms": int(len(tagged_vms)),
@@ -96,6 +119,10 @@ class DatasetProfiler:
             "time_range": {
                 "start": str(vm_df["timestamp"].min()) if "timestamp" in vm_df and not vm_df.empty else None,
                 "end": str(vm_df["timestamp"].max()) if "timestamp" in vm_df and not vm_df.empty else None,
+            },
+            "multicloud_time_range": {
+                "start": str(multicloud_df["timestamp"].min()) if "timestamp" in multicloud_df and not multicloud_df.empty else None,
+                "end": str(multicloud_df["timestamp"].max()) if "timestamp" in multicloud_df and not multicloud_df.empty else None,
             },
             "available_columns": {
                 "vm_metrics": list(vm_df.columns),
@@ -106,9 +133,11 @@ class DatasetProfiler:
                 "incident_history": list(incident_df.columns),
                 "action_history": list(action_df.columns),
                 "pipeline_runs": list(pipeline_df.columns),
+                "multicloud_vm_metrics": list(multicloud_df.columns),
+                "open_trace_patterns": list(patterns_df.columns),
                 "data_provenance": list(provenance_df.columns),
             },
-            "missing_columns": self._missing_columns(vm_df, db_df, inventory_df, cost_df),
+            "missing_columns": self._missing_columns(vm_df, db_df, inventory_df, cost_df, multicloud_df),
             "raw_corestack_bson": "Available locally" if RAW_CORESTACK_DIR.exists() else "Not included",
             "raw_corestack_required": "Not required for current question/demo",
         }
@@ -132,12 +161,18 @@ class DatasetProfiler:
             return {}
         return provenance_df["source_type"].value_counts().to_dict()
 
+    def _counts(self, df: pd.DataFrame, column: str) -> dict[str, int]:
+        if df.empty or column not in df:
+            return {}
+        return {str(key): int(value) for key, value in df[column].value_counts().to_dict().items()}
+
     def _missing_columns(
         self,
         vm_df: pd.DataFrame,
         db_df: pd.DataFrame,
         inventory_df: pd.DataFrame,
         cost_df: pd.DataFrame,
+        multicloud_df: pd.DataFrame,
     ) -> dict[str, list[str]]:
         required_vm = {
             "timestamp", "resource_id", "cloud_provider", "cpu_percent",
@@ -149,13 +184,20 @@ class DatasetProfiler:
         }
         required_inventory = {"resource_id", "environment", "business_criticality", "shutdown_allowed", "hourly_rate_usd"}
         required_cost = {"date", "resource_id", "daily_cost", "source_type"}
+        required_multicloud = {
+            "timestamp", "provider", "source_system", "account_id", "region", "resource_id",
+            "normalized_resource_id", "resource_type", "instance_type", "cpu_percent",
+            "memory_percent", "disk_percent", "network_percent", "cost_per_hour",
+            "application", "environment", "business_criticality", "workload_class",
+            "schema_version", "source_type",
+        }
         return {
             "vm_metrics": sorted(required_vm - set(vm_df.columns)),
             "db_metrics": sorted(required_db - set(db_df.columns)),
             "vm_inventory": sorted(required_inventory - set(inventory_df.columns)),
             "cost_metrics": sorted(required_cost - set(cost_df.columns)),
+            "multicloud_vm_metrics": sorted(required_multicloud - set(multicloud_df.columns)),
         }
-
 
 class RequirementChecker:
     """Maps an intent to required/optional/not-required data."""
@@ -164,6 +206,7 @@ class RequirementChecker:
         vm_cols = profile["available_columns"]["vm_metrics"]
         inventory_cols = profile["available_columns"].get("vm_inventory", [])
         cost_cols = profile["available_columns"].get("cost_metrics", [])
+        multicloud_cols = profile["available_columns"].get("multicloud_vm_metrics", [])
         base = {
             "VM telemetry": self._available(profile["vm_rows"] > 0),
             "CPU metric": self._available("cpu_percent" in vm_cols),
@@ -172,6 +215,9 @@ class RequirementChecker:
             "Application tags": "Available but optional" if profile["application_tagged_vms"] > 0 else "Missing optional",
             "Enterprise inventory": self._available("environment" in inventory_cols and profile["inventory_rows"] > 0),
             "Cost metrics": self._available("daily_cost" in cost_cols and profile["cost_rows"] > 0),
+            "Multi-cloud schema": self._available("provider" in multicloud_cols and profile.get("provider_count", 0) >= 3),
+            "Provider labels": self._available(profile.get("provider_count", 0) >= 3),
+            "Open-source trace patterns": "Available but optional" if profile.get("open_trace_pattern_rows", 0) > 0 else "Missing optional",
             "Incident history": "Available but optional" if profile["incident_rows"] > 0 else "Missing optional",
             "DB metrics": "Available but optional" if profile["db_rows"] > 0 else "Missing optional",
             "Raw CoreStack BSON": "Not required",
@@ -188,6 +234,7 @@ class RequirementChecker:
         elif intent in {"low_peak_shutdown", "scale_down"}:
             base["Enterprise inventory"] = "Available and important"
             base["Cost metrics"] = "Available and important"
+            base["Multi-cloud schema"] = "Available and important"
         elif intent == "risky_vms":
             base["Incident history"] = "Available and important"
 
@@ -288,6 +335,29 @@ class FinOpsAnalystAgent:
     def _load_actions(self) -> pd.DataFrame:
         return self._load_csv(ACTIONS_CSV, parse_dates=["created_at"])
 
+    def _load_multicloud(self) -> pd.DataFrame:
+        return self._load_csv(MULTICLOUD_CSV, parse_dates=["timestamp"])
+
+    def _multicloud_lookup(self, multicloud: pd.DataFrame) -> dict[str, dict[str, Any]]:
+        if multicloud.empty or "resource_id" not in multicloud:
+            return {}
+        latest = multicloud.sort_values("timestamp").groupby("resource_id").tail(1)
+        lookup: dict[str, dict[str, Any]] = {}
+        for _, row in latest.iterrows():
+            prefixed_id = str(row.get("resource_id", ""))
+            original_id = prefixed_id.split("-", 1)[1] if "-" in prefixed_id else prefixed_id
+            lookup[original_id] = {
+                "provider": row.get("provider", "azure"),
+                "source_system": row.get("source_system", "corestack"),
+                "account_id": row.get("account_id", "unknown"),
+                "region": row.get("region", "unknown"),
+                "instance_type": row.get("instance_type", "unknown"),
+                "resource_type": row.get("resource_type", "virtual_machine"),
+                "schema_version": row.get("schema_version", "unknown"),
+                "source_type": row.get("source_type", "unknown"),
+            }
+        return lookup
+
     def _vm_recommendation_frame(self) -> pd.DataFrame:
         df = self._load_vm_metrics()
         tags = self._load_tags()
@@ -295,11 +365,13 @@ class FinOpsAnalystAgent:
         cost = self._load_cost()
         incidents = self._load_incidents()
         actions = self._load_actions()
+        multicloud = self._load_multicloud()
 
         inventory_lookup = inventory.set_index("resource_id").to_dict("index") if "resource_id" in inventory else {}
         monthly_cost = self._monthly_cost_lookup(cost)
         incident_count = incidents.groupby("resource_id").size().to_dict() if "resource_id" in incidents else {}
         action_count = actions.groupby("resource_id").size().to_dict() if "resource_id" in actions else {}
+        provider_lookup = self._multicloud_lookup(multicloud)
 
         rows = []
         for vm, group in df.groupby("resource_id"):
@@ -315,6 +387,7 @@ class FinOpsAnalystAgent:
             workload = str(group["workload_class"].iloc[0])
             app = tags.get(vm, {}).get("application", "untagged")
             inv = inventory_lookup.get(vm, {})
+            cloud = provider_lookup.get(vm, {})
             environment = inv.get("environment", "unknown")
             criticality = inv.get("business_criticality", "medium")
             shutdown_allowed = bool(inv.get("shutdown_allowed", False))
@@ -342,6 +415,13 @@ class FinOpsAnalystAgent:
             action = self._recommended_action(is_shutdown_candidate, is_scale_down, is_risky)
             rows.append({
                 "VM": vm,
+                "Provider": cloud.get("provider", "azure"),
+                "Source System": cloud.get("source_system", "corestack"),
+                "Account ID": cloud.get("account_id", "unknown"),
+                "Instance Type": cloud.get("instance_type", vm_sku),
+                "Resource Type": cloud.get("resource_type", "virtual_machine"),
+                "Schema Version": cloud.get("schema_version", "legacy"),
+                "Telemetry Source": cloud.get("source_type", "corestack_derived"),
                 "Application": app,
                 "Tagged": "Yes" if is_tagged else "No",
                 "Environment": environment,

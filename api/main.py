@@ -72,9 +72,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="Agentic Proactive FinOps API",
+    title="Agentic Proactive FinOps Multi-Cloud API",
     version="0.5.0",
-    description="API gateway for the FinOps Analyst Agent, event bus, coordinator, and operational dashboard.",
+    description="API gateway for multi-cloud telemetry, the FinOps Analyst Agent, event bus, coordinator, and operational dashboard.",
     lifespan=lifespan,
 )
 
@@ -207,6 +207,9 @@ def publish_telemetry_event(request: TelemetryEventRequest) -> dict[str, Any]:
             "dataset": request.dataset,
             "rows_seen": request.rows_seen or profile["vm_rows"],
             "vm_count": request.vm_count or profile["vm_count"],
+            "provider_count": profile.get("provider_count", 0),
+            "providers": profile.get("providers", {}),
+            "schema_version": (profile.get("schema_versions") or ["unknown"])[0],
             "note": request.note,
         },
     )
@@ -240,7 +243,10 @@ def run_event_demo() -> dict[str, Any]:
             "dataset": profile["dataset_name"],
             "rows_seen": profile["vm_rows"],
             "vm_count": profile["vm_count"],
-            "note": "Demo telemetry batch pushed into the event bus",
+            "provider_count": profile.get("provider_count", 0),
+            "providers": profile.get("providers", {}),
+            "schema_version": (profile.get("schema_versions") or ["unknown"])[0],
+            "note": "Demo multi-cloud telemetry batch pushed into the event bus",
         },
     )
     pipeline = publish_event(

@@ -1,4 +1,4 @@
-﻿# Hybrid Data Strategy
+# Hybrid Data Strategy
 
 This project uses a hybrid dataset strategy so the demo can look production-grade without making false claims about the source data.
 
@@ -6,7 +6,7 @@ This project uses a hybrid dataset strategy so the demo can look production-grad
 
 Use this wording for demos, reports, and papers:
 
-> The prototype evaluates an agentic FinOps workflow using CoreStack-derived VM telemetry, deterministic synthetic enterprise context, and open-source cloud trace-inspired workload/failure patterns. Synthetic fields are explicitly labelled and are not presented as real customer records.
+> The prototype evaluates an agentic FinOps workflow using CoreStack-derived Azure telemetry, deterministic synthetic enterprise context, and AWS/GCP telemetry generated from cited open-source cloud workload trace patterns. Synthetic fields are explicitly labelled and are not presented as real customer records.
 
 Do not say that the generated inventory, cost, incident, pipeline, or action records are real CoreStack production records. They are reproducible demo records generated from the available telemetry shape.
 
@@ -14,7 +14,9 @@ Do not say that the generated inventory, cost, incident, pipeline, or action rec
 
 | Category | Files | Purpose | Claim Boundary |
 |---|---|---|---|
-| CoreStack-derived telemetry | `data/augmented_vm_metrics.csv`, `data/vm_tags.json` | VM utilization and app tag foundation | Real or CoreStack-derived base data where available; augmented fields are labelled |
+| CoreStack-derived telemetry | `data/augmented_vm_metrics.csv`, `data/vm_tags.json` | Azure VM utilization and app tag foundation | Real or CoreStack-derived base data where available; augmented fields are labelled |
+| Multi-cloud normalized telemetry | `data/multicloud_vm_metrics.csv` | Provider-neutral Azure/AWS/GCP telemetry schema for the agent platform | Azure rows are CoreStack-derived; AWS/GCP rows are deterministic synthetic rows shaped by public trace patterns |
+| Open-source trace pattern references | `data/open_trace_patterns.csv` | Documents cited workload/failure/serverless trace patterns used for AWS/GCP synthetic telemetry generation | Pattern references only; raw public trace rows are not copied |
 | Synthetic application/DB metrics | `data/db_metrics.csv` | Demonstrates VM-to-application health reasoning | Generated for the capstone scenario |
 | Synthetic enterprise context | `data/vm_inventory.csv`, `data/cost_metrics.csv`, `data/incident_history.csv`, `data/action_history.csv`, `data/pipeline_runs.csv` | Adds production-style owner, cost, policy, incident, and operational history | Deterministic synthetic data, not customer records |
 | Provenance metadata | `data/data_provenance.csv` | Tracks which datasets are real, synthetic, or pattern-inspired | Required for paper-safe reporting |
@@ -40,6 +42,7 @@ Run this command to regenerate all deterministic context files:
 
 ```bash
 python tools/generate_enterprise_context.py
+python tools/generate_multicloud_demo_data.py
 ```
 
 Generated outputs:
@@ -50,6 +53,8 @@ Generated outputs:
 - `data/action_history.csv`
 - `data/pipeline_runs.csv`
 - `data/data_provenance.csv`
+- `data/open_trace_patterns.csv`
+- `data/multicloud_vm_metrics.csv`
 
 The generator is deterministic. Given the same base telemetry and tags, it creates the same enterprise context each time.
 
@@ -76,6 +81,8 @@ The FinOps Analyst Agent profiles the available dataset before answering a quest
 - available and missing columns
 - whether raw CoreStack BSON is required
 - source mix from provenance records
+- provider distribution across Azure, AWS, and GCP
+- normalized multi-cloud schema coverage
 
 For VM shutdown and scale-down questions, the agent uses VM telemetry, inventory, shutdown policy, cost, and application tags. For application degradation questions, it requires DB metrics and app context. For risk questions, it also considers incident history and business criticality.
 
@@ -85,7 +92,7 @@ Include these limitations if this becomes a paper:
 
 - The current prototype is an agentic decision-support demo, not a deployed autonomous remediation platform.
 - Enterprise metadata, cost metrics, incidents, action history, and pipeline runs are synthetic unless replaced by real exports.
-- Open-source traces inform workload and failure pattern design, but raw open-source records are not merged into the current dataset.
+- Open-source traces inform workload and failure pattern design, but raw open-source records are not merged into the current dataset. AWS/GCP telemetry rows are synthetic and explicitly labelled as open-source-trace-pattern-inspired.
 - Recommendation quality should be validated against real billing, CMDB, incident, and approval data before production use.
 
 ## Future Production Data To Request From Vijay

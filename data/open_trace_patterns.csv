@@ -1,0 +1,5 @@
+pattern_id,trace_reference,citation_url,provider_model,workload_pattern,cpu_multiplier,memory_multiplier,network_multiplier,failure_rate_hint,source_type
+google-cluster-bursty-batch,Google Cluster Trace analysis,https://arxiv.org/abs/2308.02358,gcp,bursty_batch_compute,1.28,1.12,1.08,0.035,open_source_trace_pattern_reference
+alibaba-colocated-variable,Alibaba co-located datacenter workload trace,https://arxiv.org/abs/1808.02919,aws,colocated_variable_service,1.15,1.22,1.05,0.045,open_source_trace_pattern_reference
+alibaba-anomaly-spike,Alibaba workload anomaly analysis,https://arxiv.org/abs/1811.06901,aws,anomaly_spike_service,1.42,1.18,1.25,0.065,open_source_trace_pattern_reference
+huawei-serverless-diurnal,Huawei production serverless workload trace,https://arxiv.org/abs/2312.10127,gcp,serverless_diurnal_support,0.92,0.88,1.35,0.025,open_source_trace_pattern_reference

@@ -7,3 +7,5 @@ cost_metrics.csv,"daily cost, monthly estimate, SKU",synthetic_cost_from_public_
 incident_history.csv,"incident id, severity, root cause, remediation",synthetic_incident_history_from_trace_patterns,Used to demonstrate knowledge-agent reasoning and business risk.
 action_history.csv,"scale/shutdown actions, approval, savings",synthetic_action_history,Used to explain why actions were taken.
 pipeline_runs.csv,"pipeline executions, failures, durations, retries",synthetic_pipeline_history,Used for pipeline monitor and query-agent demos.
+open_trace_patterns.csv,"pattern_id, trace_reference, workload_pattern, multipliers, citation_url",open_source_trace_pattern_reference,Cited public cloud traces used as pattern references; raw records are not copied.
+multicloud_vm_metrics.csv,"provider, source_system, account_id, region, resource_id, instance_type, utilization, cost_per_hour, source_type",corestack_derived + open_source_trace_pattern_inspired_synthetic_telemetry,Provider-neutral schema with Azure/CoreStack-derived rows and AWS/GCP rows generated from public trace patterns.

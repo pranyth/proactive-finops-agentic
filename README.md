@@ -1,6 +1,6 @@
-# Agentic Proactive FinOps Governance
+# Agentic Proactive FinOps Governance for Multi-Cloud Telemetry
 
-A production-style capstone prototype for CoreStack cloud telemetry. The main demo is now a **FastAPI-backed, event-driven FinOps Analyst Agent platform**: telemetry/failure events enter an API gateway, a Coordinator Agent routes work through internal tools, and the browser only visualizes returned system state.
+A production-style capstone prototype for multi-cloud telemetry. The main demo is now a **FastAPI-backed, event-driven FinOps Analyst Agent platform**: telemetry/failure events enter an API gateway, a Coordinator Agent routes work through internal tools, and the browser only visualizes returned system state.
 
 ## What This Project Shows
 
@@ -10,7 +10,9 @@ A production-style capstone prototype for CoreStack cloud telemetry. The main de
 - Non-Streamlit web command center served by the API
 - One visible FinOps Analyst Agent entry point
 - Dataset profiling and data requirement checks
-- CoreStack Azure VM telemetry analysis
+- Multi-cloud telemetry analysis across Azure, AWS, and GCP demo providers
+- CoreStack-derived Azure telemetry as the first real provider source
+- Open-source workload trace pattern references for AWS/GCP synthetic telemetry
 - Synthetic/augmented CPU, memory, disk, network, and DB metrics
 - Hybrid enterprise context for inventory, cost, incidents, actions, and pipelines
 - Data provenance labels for paper-safe reporting
@@ -58,9 +60,10 @@ agents/analyst.py           # FinOpsAnalystAgent, DatasetProfiler, RequirementCh
 agents/                     # Shared contracts, storage, and operational audit bootstrap
 dashboard.py                # Legacy VM forecasting Streamlit dashboard
 DbDashboard.py              # Legacy application/DB Streamlit dashboard
-ingestion/                  # Normalized telemetry schema and adapters
-tools/                      # Data extraction, augmentation, context generation, DB metric generation
+ingestion/                  # Provider-neutral telemetry schema and CoreStack/AWS/Azure/GCP adapters
+tools/                      # Data extraction, augmentation, context generation, multi-cloud data generation
 docs/DATA_STRATEGY.md       # Paper-safe data strategy, provenance, and limitations
+docs/MULTICLOUD_ARCHITECTURE.md # Provider-neutral schema and adapter architecture
 data/                       # Checked-in demo datasets needed to run dashboards
 requirements.txt            # Python dependencies
 ```
@@ -79,13 +82,15 @@ data/incident_history.csv
 data/action_history.csv
 data/pipeline_runs.csv
 data/data_provenance.csv
+data/open_trace_patterns.csv
+data/multicloud_vm_metrics.csv
 ```
 
 These files are enough to run the project demo. You do not need the raw `corestack_data/` BSON exports unless you want to regenerate the pipeline from the original CoreStack data.
 
 For paper/demo wording, use:
 
-> The prototype evaluates an agentic FinOps workflow using CoreStack-derived VM telemetry, deterministic synthetic enterprise context, and open-source cloud trace-inspired workload/failure patterns.
+> The prototype evaluates an agentic FinOps workflow using CoreStack-derived Azure telemetry, deterministic synthetic enterprise context, and AWS/GCP telemetry generated from cited open-source cloud workload trace patterns.
 
 More details are in `docs/DATA_STRATEGY.md`.
 
@@ -203,9 +208,10 @@ The checked-in data already works. To regenerate deterministic enterprise contex
 
 ```bash
 python tools/generate_enterprise_context.py
+python tools/generate_multicloud_demo_data.py
 ```
 
-This creates inventory, cost, incident, action, pipeline, and provenance datasets. It does not require raw CoreStack BSON.
+This creates inventory, cost, incident, action, pipeline, multi-cloud telemetry, open-trace pattern, and provenance datasets. It does not require raw CoreStack BSON.
 
 ## Recommended Vijay Demo Order
 
@@ -238,12 +244,13 @@ python tools/augment_metrics.py
 python tools/extract_app_tags.py
 python tools/generate_db_metrics.py
 python tools/generate_enterprise_context.py
+python tools/generate_multicloud_demo_data.py
 ```
 
 For normal clone-and-run demos, this step is not required.
 
 ## Project Theme
 
-**Agentic Proactive FinOps Governance for CoreStack Telemetry**
+**Agentic Proactive FinOps Governance for Multi-Cloud Telemetry**
 
-A command center where the browser visualizes an API-backed FinOps Analyst Agent that identifies current data, checks what is required, answers operational questions, recommends cost/risk actions, and shows evidence for every recommendation.
+A command center where the browser visualizes an API-backed multi-cloud FinOps Analyst Agent that identifies current data, checks what is required, answers operational questions, recommends cost/risk actions, and shows evidence for every recommendation.
