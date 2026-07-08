@@ -1,4 +1,4 @@
-"""Shared agent contract and Meeting 1 agent catalog."""
+"""Shared contracts and catalog for the agentic FinOps demo."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 @dataclass
 class AgentResult:
-    """Standard output shape for every operational agent."""
+    """Operational audit record for internal tools and pipelines."""
 
     agent_name: str
     status: str
@@ -23,61 +23,80 @@ class AgentResult:
         return asdict(self)
 
 
+@dataclass
+class AgentAnswer:
+    """Public answer contract for the visible FinOps Analyst Agent."""
+
+    answer: str
+    intent: str
+    dataset_profile: dict[str, Any]
+    requirement_check: list[dict[str, str]]
+    recommendations: list[dict[str, Any]]
+    evidence: dict[str, Any]
+    tools_used: list[str]
+    next_action: str
+    context: dict[str, Any] = field(default_factory=dict)
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat(timespec="seconds"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 AGENT_CATALOG = [
     {
-        "agent": "Ingestion Agent",
-        "input": "CoreStack BSON exports / augmented VM CSV",
-        "output": "Validated VM inventory and metric summaries",
-        "current_asset": "tools/extract_vm_metrics.py, ingestion/schema.py",
-        "meeting": "Meeting 1/2",
+        "component": "FinOps Analyst Agent",
+        "role": "Visible entry point",
+        "input": "User question + selected dataset context",
+        "output": "Answer, recommendation table, requirement check, evidence, next action",
+        "how_it_runs": "agentic_command_center.py calls FinOpsAnalystAgent.run(question, context)",
     },
     {
-        "agent": "Synthetic Data Agent",
-        "input": "Real CPU/network patterns and missing metric columns",
-        "output": "AI-style augmented CPU, memory, disk, network, and DB signal",
-        "current_asset": "tools/augment_metrics.py, tools/generate_db_metrics.py",
-        "meeting": "Meeting 1/2",
+        "component": "Dataset Profiler",
+        "role": "Internal tool",
+        "input": "Current demo CSV/JSON data",
+        "output": "Dataset type, rows, VMs, date range, available/missing fields",
+        "how_it_runs": "Called automatically by FinOps Analyst Agent",
     },
     {
-        "agent": "Forecasting Agent",
-        "input": "VM telemetry with 48-hour lookback windows",
-        "output": "Spike predictions, thresholds, MAE/RMSE, proactive accuracy",
-        "current_asset": "dashboard.py::run_model",
-        "meeting": "Future",
+        "component": "Requirement Checker",
+        "role": "Internal tool",
+        "input": "Detected intent + dataset profile",
+        "output": "Available / optional / missing / not required checklist",
+        "how_it_runs": "Called automatically before answering",
     },
     {
-        "agent": "Recommendation Agent",
-        "input": "Recent VM telemetry, workload class, application tags",
-        "output": "SCALE_UP, SCALE_DOWN, SHUTDOWN_LOW_PEAK, KEEP_RUNNING",
-        "current_asset": "dashboard.py::get_recommendations",
-        "meeting": "Meeting 2 seed / Meeting 3 full",
+        "component": "Recommendation Tool",
+        "role": "Internal tool",
+        "input": "VM metrics, workload class, tags, latest 48h utilization",
+        "output": "Shutdown, scale-down, risk, and explanation rows",
+        "how_it_runs": "Called only for recommendation questions",
     },
     {
-        "agent": "Application Health Agent",
-        "input": "VM metrics, DB metrics, application tag mapping",
-        "output": "Application risk and DB health summaries",
-        "current_asset": "DbDashboard.py",
-        "meeting": "Meeting 2 seed / Meeting 4 full",
+        "component": "App/DB Health Tool",
+        "role": "Internal tool",
+        "input": "DB metrics + application mapping",
+        "output": "Application health and degradation summary",
+        "how_it_runs": "Called only for application health questions",
     },
     {
-        "agent": "Pipeline Monitor Agent",
-        "input": "Agent and pipeline execution events",
-        "output": "Daily executions, failures, success rate, failure reasons",
-        "current_asset": "New storage-backed monitor",
-        "meeting": "Meeting 2 seed / Meeting 4 full",
+        "component": "Data Ingestion Pipeline",
+        "role": "Data preparation pipeline",
+        "input": "CoreStack raw/processed telemetry",
+        "output": "Normalized metric files used by the agent",
+        "how_it_runs": "Offline pipeline; not the main user-facing agent",
     },
     {
-        "agent": "Serverless Action Agent",
-        "input": "Recommendations and pipeline failures",
-        "output": "Lambda/Azure Function payloads and execution logs",
-        "current_asset": "dashboard.py/DbDashboard.py simulated action logs",
-        "meeting": "Meeting 2 seed / Meeting 5 full",
+        "component": "Synthetic Data Generator",
+        "role": "Data preparation pipeline",
+        "input": "Real VM patterns + missing memory/disk/DB signals",
+        "output": "Augmented demo datasets for prediction/testing",
+        "how_it_runs": "Offline pipeline; not manually called during the agent demo",
     },
     {
-        "agent": "Query Agent",
-        "input": "User FinOps question plus stored agent outputs",
-        "output": "Explainable operational answer",
-        "current_asset": "New natural-language query layer",
-        "meeting": "Future",
+        "component": "Operational Audit Trail",
+        "role": "Observability layer",
+        "input": "Internal tool/pipeline execution events",
+        "output": "Run history, pipeline status, action logs",
+        "how_it_runs": "Shown below the main agent demo for traceability",
     },
 ]

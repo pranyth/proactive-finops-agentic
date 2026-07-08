@@ -1,24 +1,47 @@
 # Agentic Proactive FinOps Governance
 
-A production-style capstone prototype for CoreStack cloud telemetry. The system turns VM and application telemetry into an agentic FinOps command center with stored agent runs, recommendations, pipeline history, and Lambda-style action logs.
+A production-style capstone prototype for CoreStack cloud telemetry. The main demo is a single **FinOps Analyst Agent**: the user asks a question, the agent identifies the current dataset, checks what data is required, calls internal tools, and returns recommendations with evidence.
 
 ## What This Project Shows
 
+- One visible FinOps Analyst Agent entry point
+- Dataset profiling and data requirement checks
 - CoreStack Azure VM telemetry analysis
 - Synthetic/augmented CPU, memory, disk, network, and DB metrics
-- Random Forest based VM spike prediction
 - Dynamic threshold based recommendations
 - Application and database health correlation
-- Agentic FinOps command center with SQLite-backed run history
+- SQLite-backed operational audit trail
 - Simulated Lambda/serverless action logs
+
+## How The Agent Runs
+
+```text
+User Question + Dataset Context
+        ?
+FinOps Analyst Agent
+        ?
+Dataset Profiler + Requirement Checker
+        ?
+Internal Tools
+  - Recommendation Tool
+  - Low-Peak Shutdown Tool
+  - Risk Ranking Tool
+  - App/DB Health Tool
+  - Pipeline/Action Audit Tools
+        ?
+Answer + Recommendations + Evidence + Next Action
+```
+
+Data ingestion and synthetic data generation are treated as **data pipelines/tools**, not as the main user-facing agent.
 
 ## Repository Contents
 
 ```text
-agentic_command_center.py   # Agent architecture + Meeting 1/2 command center
-dashboard.py                # Main VM forecasting and recommendation dashboard
+agentic_command_center.py   # Main FinOps Analyst Agent command center
+agents/analyst.py           # FinOpsAnalystAgent, DatasetProfiler, RequirementChecker
+agents/                     # Shared contracts, storage, and operational audit bootstrap
+dashboard.py                # VM forecasting and recommendation dashboard
 DbDashboard.py              # Application and database intelligence dashboard
-agents/                     # Agent contracts, storage, and Meeting 2 bootstrap agents
 ingestion/                  # Normalized telemetry schema and adapters
 tools/                      # Data extraction, augmentation, app-tag extraction, DB metric generation
 data/                       # Checked-in demo datasets needed to run dashboards
@@ -66,20 +89,30 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 4. Run the Agentic FinOps command center
+### 4. Run the FinOps Analyst Agent command center
 
 ```bash
 streamlit run agentic_command_center.py
 ```
 
-This is the main Meeting 1/2 demo. It shows:
+This is the main Phase 3 demo. It shows:
 
-- Agent architecture diagram
-- Agent responsibility table
-- Agent Control Center
-- Agent run history
-- SQLite storage summary
-- Seeded recommendations, pipeline runs, and Lambda-style action logs
+- Ask-the-agent question panel
+- Dataset identification
+- Data requirement checklist
+- Final answer and next action
+- Recommendation/evidence table
+- Architecture showing one visible agent and internal tools
+- Operational audit trail below the main demo
+
+Prepared demo questions:
+
+- Which VMs can be shut down during low peak hours?
+- Which VMs need scale down?
+- Which VMs are risky?
+- Which applications are degraded?
+- Is DB data required for this question?
+- Why is this VM recommended?
 
 ### 5. Run the VM forecasting dashboard
 
@@ -101,11 +134,21 @@ streamlit run DbDashboard.py --server.port 8502
 
 This shows application tags, DB metrics, VM-to-DB health impact, application health scorecard, and application-triggered function logs.
 
-## Recommended Demo Order
+## Recommended Vijay Demo Order
 
-1. Start with `agentic_command_center.py` to explain the agentic project theme.
-2. Show `dashboard.py` for VM forecasting and recommendations.
-3. Show `DbDashboard.py` for application and DB health impact.
+1. Open `agentic_command_center.py`.
+2. Show the architecture: one FinOps Analyst Agent, internal tools, and data pipelines.
+3. Ask: "Which VMs can be shut down during low peak hours?"
+4. Show dataset profile, requirement check, answer, recommendations, and evidence.
+5. Ask: "Which applications are degraded?"
+6. Explain that DB metrics are required for app health questions but not required for VM shutdown questions.
+7. Show the operational audit trail only after the main agent answer.
+
+## Where AI Comes In
+
+- **ML AI:** dynamic thresholds and Random Forest forecasting in the VM dashboard.
+- **Agentic AI:** dataset understanding, requirement checking, tool selection, and natural-language explanation.
+- **Synthetic AI data:** generated memory, disk, network, and DB metrics used to test prediction and application-health workflows.
 
 ## Optional: Regenerate Data
 
@@ -124,4 +167,4 @@ For normal clone-and-run demos, this step is not required.
 
 **Agentic Proactive FinOps Governance for CoreStack Telemetry**
 
-A command center where specialized agents ingest cloud telemetry, store operational context, generate missing metrics, predict VM risk, recommend cost actions, monitor pipeline health, and simulate Lambda-based remediation workflows.
+A command center where one FinOps Analyst Agent identifies current data, checks what is required, answers operational questions, recommends cost/risk actions, and shows evidence for every recommendation.
