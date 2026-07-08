@@ -1,0 +1,24 @@
+incident_id,timestamp,resource_id,application,severity,incident_type,duration_minutes,root_cause,remediation_taken,source_type
+INC-00018,2025-08-03 23:00:00,patch-report-aug25,untagged,P3,network_degradation,234,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00001,2025-08-12 04:00:00,NewVM-totest-patchReport,untagged,P3,cpu_spike,30,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00006,2025-09-05 10:00:00,analytics-jump-host,untagged,P3,network_degradation,40,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00012,2025-09-10 08:00:00,cs-prod-ir-vm-india,untagged,P3,pipeline_delay,33,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00020,2025-10-10 01:00:00,ruletest,untagged,P3,network_degradation,40,Synthetic incident generated from high utilization window,investigated_db,synthetic_incident_history_from_trace_patterns
+INC-00017,2025-10-31 06:00:00,patch-mgmt-demo-east-us-2,App6,P3,db_latency,25,Synthetic incident generated from high utilization window,scaled_up,synthetic_incident_history_from_trace_patterns
+INC-00002,2025-11-03 23:00:00,Testing-2503-Patch-Report,untagged,P3,pipeline_delay,49,Synthetic incident generated from high utilization window,investigated_db,synthetic_incident_history_from_trace_patterns
+INC-00019,2025-11-04 17:00:00,patchReport-NewVm-Sep04,untagged,P2,db_latency,154,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00015,2025-11-04 20:00:00,idletesting,untagged,P3,cpu_spike,108,Synthetic incident generated from high utilization window,scaled_up,synthetic_incident_history_from_trace_patterns
+INC-00016,2025-11-24 22:00:00,oracle-vm-vm-report,untagged,P3,pipeline_delay,225,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00022,2025-12-06 08:00:00,winvm-test,untagged,P3,network_degradation,226,Synthetic incident generated from high utilization window,restarted_service,synthetic_incident_history_from_trace_patterns
+INC-00007,2025-12-18 13:00:00,core-team-2026,untagged,P3,cpu_spike,119,Synthetic incident generated from high utilization window,restarted_service,synthetic_incident_history_from_trace_patterns
+INC-00011,2025-12-22 18:00:00,corestack-openvpn-India,untagged,P3,cpu_spike,65,Synthetic incident generated from high utilization window,scaled_up,synthetic_incident_history_from_trace_patterns
+INC-00013,2025-12-28 01:00:00,cs-roi-application,untagged,P3,db_latency,184,Synthetic incident generated from high utilization window,restarted_service,synthetic_incident_history_from_trace_patterns
+INC-00014,2025-12-29 13:00:00,cspbi-prod-ir-Europe,PowerBI,P2,cpu_spike,174,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00004,2026-01-06 19:00:00,alert-testing-vm,untagged,P2,db_latency,20,Synthetic incident generated from high utilization window,no_action,synthetic_incident_history_from_trace_patterns
+INC-00003,2026-01-08 13:00:00,Vulern,untagged,P3,db_latency,64,Synthetic incident generated from high utilization window,restarted_service,synthetic_incident_history_from_trace_patterns
+INC-00009,2026-01-09 02:00:00,core-team-29th-linux,untagged,P3,pipeline_delay,209,Synthetic incident generated from high utilization window,investigated_db,synthetic_incident_history_from_trace_patterns
+INC-00008,2026-01-20 10:00:00,core-team-29th,untagged,P2,network_degradation,216,Synthetic incident generated from high utilization window,restarted_service,synthetic_incident_history_from_trace_patterns
+INC-00010,2026-01-23 07:00:00,corestack-openvpn,untagged,P3,cpu_spike,223,Synthetic incident generated from high utilization window,investigated_db,synthetic_incident_history_from_trace_patterns
+INC-00005,2026-01-24 04:00:00,alert-testing-vm-sample,untagged,P2,cpu_spike,77,Synthetic incident generated from high utilization window,scaled_up,synthetic_incident_history_from_trace_patterns
+INC-00021,2026-02-20 06:00:00,utilizationtest,untagged,P2,pipeline_delay,58,Synthetic incident generated from high utilization window,scaled_up,synthetic_incident_history_from_trace_patterns
+INC-00023,2026-03-09 06:00:00,wus-NetSPI002,untagged,P2,cpu_spike,52,Synthetic incident generated from high utilization window,investigated_db,synthetic_incident_history_from_trace_patterns

@@ -1,4 +1,4 @@
-# Agentic Proactive FinOps Governance
+﻿# Agentic Proactive FinOps Governance
 
 A production-style capstone prototype for CoreStack cloud telemetry. The main demo is a single **FinOps Analyst Agent**: the user asks a question, the agent identifies the current dataset, checks what data is required, calls internal tools, and returns recommendations with evidence.
 
@@ -8,7 +8,9 @@ A production-style capstone prototype for CoreStack cloud telemetry. The main de
 - Dataset profiling and data requirement checks
 - CoreStack Azure VM telemetry analysis
 - Synthetic/augmented CPU, memory, disk, network, and DB metrics
-- Dynamic threshold based recommendations
+- Hybrid enterprise context for inventory, cost, incidents, actions, and pipelines
+- Data provenance labels for paper-safe reporting
+- Dynamic threshold and Random Forest based forecasting support
 - Application and database health correlation
 - SQLite-backed operational audit trail
 - Simulated Lambda/serverless action logs
@@ -17,18 +19,18 @@ A production-style capstone prototype for CoreStack cloud telemetry. The main de
 
 ```text
 User Question + Dataset Context
-        ?
+        ->
 FinOps Analyst Agent
-        ?
+        ->
 Dataset Profiler + Requirement Checker
-        ?
+        ->
 Internal Tools
   - Recommendation Tool
   - Low-Peak Shutdown Tool
   - Risk Ranking Tool
   - App/DB Health Tool
   - Pipeline/Action Audit Tools
-        ?
+        ->
 Answer + Recommendations + Evidence + Next Action
 ```
 
@@ -43,7 +45,8 @@ agents/                     # Shared contracts, storage, and operational audit b
 dashboard.py                # VM forecasting and recommendation dashboard
 DbDashboard.py              # Application and database intelligence dashboard
 ingestion/                  # Normalized telemetry schema and adapters
-tools/                      # Data extraction, augmentation, app-tag extraction, DB metric generation
+tools/                      # Data extraction, augmentation, context generation, DB metric generation
+docs/DATA_STRATEGY.md       # Paper-safe data strategy, provenance, and limitations
 data/                       # Checked-in demo datasets needed to run dashboards
 requirements.txt            # Python dependencies
 ```
@@ -56,9 +59,21 @@ The repo includes processed demo data:
 data/augmented_vm_metrics.csv
 data/db_metrics.csv
 data/vm_tags.json
+data/vm_inventory.csv
+data/cost_metrics.csv
+data/incident_history.csv
+data/action_history.csv
+data/pipeline_runs.csv
+data/data_provenance.csv
 ```
 
 These files are enough to run the project demo. You do not need the raw `corestack_data/` BSON exports unless you want to regenerate the pipeline from the original CoreStack data.
+
+For paper/demo wording, use:
+
+> The prototype evaluates an agentic FinOps workflow using CoreStack-derived VM telemetry, deterministic synthetic enterprise context, and open-source cloud trace-inspired workload/failure patterns.
+
+More details are in `docs/DATA_STRATEGY.md`.
 
 ## Clone and Run
 
@@ -101,7 +116,8 @@ This is the main Phase 3 demo. It shows:
 - Dataset identification
 - Data requirement checklist
 - Final answer and next action
-- Recommendation/evidence table
+- Recommendation/evidence table with cost, criticality, approval, incidents, and savings
+- Hybrid data strategy and provenance table
 - Architecture showing one visible agent and internal tools
 - Operational audit trail below the main demo
 
@@ -134,23 +150,35 @@ streamlit run DbDashboard.py --server.port 8502
 
 This shows application tags, DB metrics, VM-to-DB health impact, application health scorecard, and application-triggered function logs.
 
+## Regenerate Hybrid Context
+
+The checked-in data already works. To regenerate deterministic enterprise context from the current VM telemetry and tags:
+
+```bash
+python tools/generate_enterprise_context.py
+```
+
+This creates inventory, cost, incident, action, pipeline, and provenance datasets. It does not require raw CoreStack BSON.
+
 ## Recommended Vijay Demo Order
 
 1. Open `agentic_command_center.py`.
-2. Show the architecture: one FinOps Analyst Agent, internal tools, and data pipelines.
+2. Show the architecture: one FinOps Analyst Agent, internal tools, hybrid knowledge context, and data pipelines.
 3. Ask: "Which VMs can be shut down during low peak hours?"
-4. Show dataset profile, requirement check, answer, recommendations, and evidence.
-5. Ask: "Which applications are degraded?"
-6. Explain that DB metrics are required for app health questions but not required for VM shutdown questions.
-7. Show the operational audit trail only after the main agent answer.
+4. Show dataset profile, requirement check, answer, recommendations, savings, and evidence.
+5. Open "Hybrid data strategy for demo and paper" and show provenance.
+6. Ask: "Which applications are degraded?"
+7. Explain that DB metrics are required for app health questions but not required for VM shutdown questions.
+8. Show the operational audit trail only after the main agent answer.
 
 ## Where AI Comes In
 
 - **ML AI:** dynamic thresholds and Random Forest forecasting in the VM dashboard.
 - **Agentic AI:** dataset understanding, requirement checking, tool selection, and natural-language explanation.
-- **Synthetic AI data:** generated memory, disk, network, and DB metrics used to test prediction and application-health workflows.
+- **Synthetic AI data:** generated memory, disk, network, DB, cost, incident, action, and pipeline data used to test workflows.
+- **Open-source trace grounding:** public cloud trace research informs workload/failure patterns for synthetic context; raw trace rows are not copied into the project.
 
-## Optional: Regenerate Data
+## Optional: Regenerate From Raw CoreStack Data
 
 Only do this if you have the raw CoreStack BSON files in `corestack_data/`.
 
@@ -159,6 +187,7 @@ python tools/extract_vm_metrics.py
 python tools/augment_metrics.py
 python tools/extract_app_tags.py
 python tools/generate_db_metrics.py
+python tools/generate_enterprise_context.py
 ```
 
 For normal clone-and-run demos, this step is not required.

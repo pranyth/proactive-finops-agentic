@@ -1,9 +1,7 @@
-import json
+﻿import json
+from pathlib import Path
 
-import matplotlib
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 
@@ -12,6 +10,8 @@ from agents.core import AGENT_CATALOG
 from agents.meeting2 import bootstrap_meeting2
 from agents.storage import DB_PATH, fetch_df, get_connection, init_db, table_count
 
+
+PROVENANCE_CSV = Path("data/data_provenance.csv")
 
 st.set_page_config(
     page_title="Agentic FinOps Command Center",
@@ -45,11 +45,22 @@ def show_dataset_profile(profile: dict) -> None:
     col3.metric("DB Rows", f"{profile['db_rows']:,}")
     col4.metric("Tagged VMs", profile["application_tagged_vms"])
 
+    e1, e2, e3, e4, e5 = st.columns(5)
+    e1.metric("Inventory", f"{profile.get('inventory_rows', 0):,}")
+    e2.metric("Cost Rows", f"{profile.get('cost_rows', 0):,}")
+    e3.metric("Incidents", f"{profile.get('incident_rows', 0):,}")
+    e4.metric("Actions", f"{profile.get('action_rows', 0):,}")
+    e5.metric("Pipelines", f"{profile.get('pipeline_rows', 0):,}")
+
+    source_mix = profile.get("source_mix", {})
+    source_mix_text = ", ".join(f"{key}: {value}" for key, value in source_mix.items()) or "Not labelled"
     profile_rows = [
         {"Field": "Dataset", "Value": profile["dataset_name"]},
         {"Field": "Types", "Value": ", ".join(profile["dataset_types"])},
         {"Field": "Time Range", "Value": f"{profile['time_range']['start']} -> {profile['time_range']['end']}"},
         {"Field": "Applications", "Value": ", ".join(profile["applications"])},
+        {"Field": "Enterprise Context", "Value": "Available" if profile.get("enterprise_context_available") else "Missing"},
+        {"Field": "Source Mix", "Value": source_mix_text},
         {"Field": "Raw CoreStack BSON", "Value": profile["raw_corestack_bson"]},
         {"Field": "Raw BSON Required", "Value": profile["raw_corestack_required"]},
     ]
@@ -65,11 +76,44 @@ def show_recommendations(answer_dict: dict) -> None:
     rec_df = pd.DataFrame(recs)
     st.dataframe(rec_df, use_container_width=True, hide_index=True)
 
-    numeric_cols = [col for col in ["Avg CPU 48h", "Avg Network 48h", "Health Score", "Risk Score", "Confidence"] if col in rec_df.columns]
+    numeric_cols = [
+        col for col in [
+            "Estimated Savings Monthly USD", "Avg CPU 48h", "Avg Network 48h",
+            "Health Score", "Risk Score", "Confidence",
+        ] if col in rec_df.columns
+    ]
     label_col = "VM" if "VM" in rec_df.columns else ("Application" if "Application" in rec_df.columns else None)
     if label_col and numeric_cols:
         plot_df = rec_df.head(12).set_index(label_col)[numeric_cols[:2]]
         st.bar_chart(plot_df)
+
+
+def show_hybrid_data_strategy(profile: dict) -> None:
+    rows = [
+        {
+            "Layer": "Real CoreStack-derived telemetry",
+            "Role": "Base VM CPU/network/memory/disk behavior used by the analyst and forecasting dashboard.",
+            "Paper wording": "Real project telemetry or CoreStack-derived demo telemetry, depending on source availability.",
+        },
+        {
+            "Layer": "Synthetic enterprise context",
+            "Role": "VM inventory, owners, criticality, cost, incidents, actions, and policy fields needed for production-style recommendations.",
+            "Paper wording": "Synthetic enterprise metadata generated reproducibly for evaluation and demonstration.",
+        },
+        {
+            "Layer": "Open-source trace-inspired patterns",
+            "Role": "Failure, incident, workload, and pipeline behavior shaped by public cloud trace research patterns, not copied raw records.",
+            "Paper wording": "Open-source workload and failure traces were used as pattern references for synthetic context generation.",
+        },
+    ]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    if PROVENANCE_CSV.exists():
+        provenance = pd.read_csv(PROVENANCE_CSV)
+        st.markdown("**Data provenance records**")
+        st.dataframe(provenance, use_container_width=True, hide_index=True)
+    else:
+        st.warning("Provenance file is missing. Run tools/generate_enterprise_context.py before presenting paper-style claims.")
 
 
 def show_architecture() -> None:
@@ -88,12 +132,19 @@ def show_architecture() -> None:
             answer [label="Answer + Recommendations\n+ Evidence + Next Action", fillcolor="#FCE7F3"];
             pipelines [label="Data Pipelines\ningestion + synthetic generation", fillcolor="#F1F5F9"];
             store [label="Demo Data Store\nCSV + SQLite audit", fillcolor="#E0F2FE"];
+            knowledge [label="Hybrid Knowledge Context\ninventory, cost, incidents, provenance", fillcolor="#ECFDF5"];
+            paper [label="Paper-safe Data Strategy\nreal + synthetic + trace-inspired", fillcolor="#FFF7ED"];
 
             pipelines -> store;
+            pipelines -> knowledge;
+            knowledge -> store;
+            paper -> knowledge;
             user -> agent;
             store -> profiler;
+            knowledge -> profiler;
             agent -> profiler -> checker -> tools -> answer;
             store -> tools;
+            knowledge -> tools;
         }
         """
     )
@@ -103,8 +154,8 @@ ensure_demo_data(force=False)
 analyst = FinOpsAnalystAgent()
 
 st.title("Agentic Proactive FinOps Governance")
-st.markdown("**One visible FinOps Analyst Agent. Data pipelines prepare data; the agent answers questions and chooses internal tools.**")
-st.caption("Phase 3 demo: dataset identification, data requirement checks, recommendations, evidence, and architecture for Vijay.")
+st.markdown("**One visible FinOps Analyst Agent. Data pipelines prepare real, synthetic, and trace-inspired context; the agent answers questions and chooses internal tools.**")
+st.caption("Phase 3 demo: dataset identification, data requirement checks, recommendations, evidence, provenance, and architecture for Vijay.")
 
 st.divider()
 st.subheader("Ask the FinOps Agent")
@@ -150,11 +201,15 @@ show_recommendations(answer)
 with st.expander("Dataset profile: how the agent identifies current data", expanded=True):
     show_dataset_profile(answer["dataset_profile"])
 
+with st.expander("Hybrid data strategy for demo and paper", expanded=True):
+    show_hybrid_data_strategy(answer["dataset_profile"])
+
 with st.expander("Where is AI coming in?", expanded=True):
     ai_rows = [
         {"Layer": "ML AI", "What it does": "Uses dynamic thresholds and Random Forest forecasting in the VM dashboard to detect/predict risk."},
         {"Layer": "Agentic AI", "What it does": "Profiles data, checks requirements, routes the question to the right internal tool, and explains the answer."},
-        {"Layer": "Synthetic AI Data", "What it does": "Generated memory, disk, network, and DB signals make incomplete CoreStack data usable for prediction demos."},
+        {"Layer": "Synthetic AI Data", "What it does": "Generates missing enterprise context such as cost, incidents, action history, and pipeline behavior for reproducible demos."},
+        {"Layer": "Open-source trace grounding", "What it does": "Uses public trace research as pattern references for workload/failure behavior while keeping generated data labelled."},
     ]
     st.dataframe(pd.DataFrame(ai_rows), use_container_width=True, hide_index=True)
 
@@ -166,7 +221,7 @@ catalog_df = pd.DataFrame(AGENT_CATALOG)
 st.dataframe(catalog_df, use_container_width=True, hide_index=True)
 
 st.info(
-    "Demo line for Vijay: The user does not call each level. The user asks one FinOps Analyst Agent; it identifies the dataset, checks what is required, calls internal tools, and returns an answer with evidence."
+    "Demo line for Vijay: The user does not call each level. The user asks one FinOps Analyst Agent; it identifies the dataset, checks what is required, uses internal tools and knowledge context, then returns an answer with evidence."
 )
 
 st.divider()
@@ -181,7 +236,6 @@ if st.button("Refresh Operational Demo Runs"):
 agent_runs = load_table("SELECT * FROM agent_runs ORDER BY created_at DESC")
 storage_summary = load_table("SELECT * FROM data_storage_summary ORDER BY dataset")
 vm_summary = load_table("SELECT * FROM vm_metric_summary ORDER BY max_cpu DESC")
-recommendations = load_table("SELECT * FROM recommendations ORDER BY urgency DESC")
 pipeline_runs = load_table("SELECT * FROM pipeline_runs ORDER BY created_at DESC")
 actions = load_table("SELECT * FROM serverless_action_logs ORDER BY created_at DESC")
 
@@ -240,4 +294,4 @@ with tab5:
         )
 
 st.divider()
-st.caption(f"SQLite audit store: {DB_PATH} | Phase 3: one FinOps Analyst Agent with internal tools and clear entry/exit points.")
+st.caption(f"SQLite audit store: {DB_PATH} | Phase 3: one FinOps Analyst Agent with internal tools, enterprise context, and provenance-aware data.")

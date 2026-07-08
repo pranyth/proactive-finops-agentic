@@ -1,0 +1,9 @@
+dataset,fields,source_type,notes
+augmented_vm_metrics.csv,"timestamp, resource_id, cpu/network/memory/disk/workload_class",real_corestack + synthetic_metric_enrichment,CPU/network preserve real production VM patterns where available; memory/disk are generated when not collected.
+db_metrics.csv,"db connections, latency, reads, writes",synthetic_app_db_enrichment,Generated to model Vijay's VM trouble -> DB degradation pattern.
+vm_tags.json,"application, owner tags",real_corestack_inventory_where_available,Untagged VMs are explicitly marked untagged.
+vm_inventory.csv,"environment, SKU, owner, criticality, business hours, shutdown policy",real_corestack_tags + synthetic_enterprise_context,Business context required for autonomous recommendations.
+cost_metrics.csv,"daily cost, monthly estimate, SKU",synthetic_cost_from_public_cloud_pricing_pattern,Used for estimated savings in demos; replace with billing export for production.
+incident_history.csv,"incident id, severity, root cause, remediation",synthetic_incident_history_from_trace_patterns,Used to demonstrate knowledge-agent reasoning and business risk.
+action_history.csv,"scale/shutdown actions, approval, savings",synthetic_action_history,Used to explain why actions were taken.
+pipeline_runs.csv,"pipeline executions, failures, durations, retries",synthetic_pipeline_history,Used for pipeline monitor and query-agent demos.
