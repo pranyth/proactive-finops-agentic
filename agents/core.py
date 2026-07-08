@@ -48,14 +48,14 @@ AGENT_CATALOG = [
         "role": "Visible entry point",
         "input": "User question + selected dataset context",
         "output": "Answer, recommendation table, requirement check, evidence, next action",
-        "how_it_runs": "agentic_command_center.py calls FinOpsAnalystAgent.run(question, context)",
+        "how_it_runs": "FastAPI /api/query calls FinOpsAnalystAgent.run(question, context)",
     },
     {
         "component": "Dataset Profiler",
         "role": "Internal tool",
         "input": "Current demo CSV/JSON data",
         "output": "Dataset type, rows, VMs, date range, available/missing fields",
-        "how_it_runs": "Called automatically by FinOps Analyst Agent",
+        "how_it_runs": "Called automatically by the FinOps Analyst Agent behind the API",
     },
     {
         "component": "Requirement Checker",
@@ -97,6 +97,6 @@ AGENT_CATALOG = [
         "role": "Observability layer",
         "input": "Internal tool/pipeline execution events",
         "output": "Run history, pipeline status, action logs",
-        "how_it_runs": "Shown below the main agent demo for traceability",
+        "how_it_runs": "Returned by operational API endpoints and visualized below the main answer",
     },
 ]

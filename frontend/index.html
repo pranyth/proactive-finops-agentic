@@ -1,0 +1,153 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentic FinOps Command Center</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">AF</div>
+          <div>
+            <div class="brand-title">Agentic FinOps</div>
+            <div class="brand-subtitle">CoreStack Governance</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <a href="#ask" class="active">Ask Agent</a>
+          <a href="#requirements">Requirements</a>
+          <a href="#recommendations">Recommendations</a>
+          <a href="#data">Data Profile</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#audit">Audit Trail</a>
+        </nav>
+        <div class="status-box">
+          <span class="status-dot"></span>
+          <span id="api-status">Checking API</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>FinOps Analyst Command Center</h1>
+            <p>FastAPI-backed operational UI for the single visible FinOps Analyst Agent.</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="refresh-demo" class="ghost-button">Refresh Audit</button>
+            <a class="ghost-button" href="/docs" target="_blank" rel="noreferrer">API Docs</a>
+          </div>
+        </header>
+
+        <section class="metric-grid" id="summary-metrics">
+          <div class="metric"><span>VMs</span><strong id="metric-vms">-</strong></div>
+          <div class="metric"><span>VM Rows</span><strong id="metric-vm-rows">-</strong></div>
+          <div class="metric"><span>Cost Rows</span><strong id="metric-cost-rows">-</strong></div>
+          <div class="metric"><span>Incidents</span><strong id="metric-incidents">-</strong></div>
+          <div class="metric"><span>Pipeline Runs</span><strong id="metric-pipelines">-</strong></div>
+          <div class="metric"><span>Actions</span><strong id="metric-actions">-</strong></div>
+        </section>
+
+        <section id="ask" class="panel agent-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Ask the FinOps Agent</h2>
+              <p>User question + current data context goes through FastAPI to the analyst agent.</p>
+            </div>
+            <span class="pill">/api/query</span>
+          </div>
+          <div class="query-grid">
+            <label>
+              Prepared question
+              <select id="question-select"></select>
+            </label>
+            <label>
+              Custom question
+              <input id="custom-question" placeholder="Example: Which VMs are risky?" />
+            </label>
+            <label>
+              Time window
+              <select id="time-window">
+                <option value="latest_48h">latest_48h</option>
+                <option value="latest_7d">latest_7d</option>
+                <option value="full_dataset">full_dataset</option>
+              </select>
+            </label>
+            <button id="run-agent" class="primary-button">Run Agent</button>
+          </div>
+        </section>
+
+        <section class="split">
+          <div class="panel response-panel">
+            <div class="panel-heading compact">
+              <h2>Agent Response</h2>
+              <span id="intent-pill" class="pill muted">intent</span>
+            </div>
+            <p id="answer-text" class="answer-text">Run the agent to see the response.</p>
+            <div class="next-action"><span>Next action</span><strong id="next-action">-</strong></div>
+          </div>
+
+          <div class="panel tools-panel">
+            <div class="panel-heading compact">
+              <h2>Internal Tools</h2>
+            </div>
+            <div id="tools-used" class="tool-list"></div>
+          </div>
+        </section>
+
+        <section id="requirements" class="panel">
+          <div class="panel-heading compact">
+            <h2>Data Requirement Check</h2>
+          </div>
+          <div id="requirement-list" class="requirement-list"></div>
+        </section>
+
+        <section id="recommendations" class="panel">
+          <div class="panel-heading compact">
+            <h2>Recommendations + Evidence</h2>
+          </div>
+          <div id="evidence-strip" class="evidence-strip"></div>
+          <div class="table-wrap">
+            <table id="recommendations-table"></table>
+          </div>
+        </section>
+
+        <section id="data" class="panel">
+          <div class="panel-heading compact">
+            <h2>Dataset Profile + Provenance</h2>
+          </div>
+          <div id="profile-grid" class="profile-grid"></div>
+          <div id="source-mix" class="source-mix"></div>
+        </section>
+
+        <section id="architecture" class="panel">
+          <div class="panel-heading compact">
+            <h2>Architecture</h2>
+          </div>
+          <div class="flow" id="architecture-flow"></div>
+          <div class="component-grid" id="component-grid"></div>
+        </section>
+
+        <section id="audit" class="panel">
+          <div class="panel-heading compact">
+            <h2>Operational Audit Trail</h2>
+          </div>
+          <div class="audit-tabs">
+            <button class="tab active" data-tab="agent_runs">Agent Runs</button>
+            <button class="tab" data-tab="pipeline_runs">Pipeline Runs</button>
+            <button class="tab" data-tab="serverless_actions">Serverless Logs</button>
+            <button class="tab" data-tab="storage">Storage</button>
+          </div>
+          <div class="table-wrap">
+            <table id="audit-table"></table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

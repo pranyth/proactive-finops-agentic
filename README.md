@@ -1,9 +1,11 @@
 ﻿# Agentic Proactive FinOps Governance
 
-A production-style capstone prototype for CoreStack cloud telemetry. The main demo is a single **FinOps Analyst Agent**: the user asks a question, the agent identifies the current dataset, checks what data is required, calls internal tools, and returns recommendations with evidence.
+A production-style capstone prototype for CoreStack cloud telemetry. The main demo is now a **FastAPI-backed FinOps Analyst Agent platform**: the browser calls APIs, the API gateway calls the agent, and the UI only visualizes returned system state.
 
 ## What This Project Shows
 
+- FastAPI API gateway for the visible FinOps Analyst Agent
+- Non-Streamlit web command center served by the API
 - One visible FinOps Analyst Agent entry point
 - Dataset profiling and data requirement checks
 - CoreStack Azure VM telemetry analysis
@@ -15,10 +17,12 @@ A production-style capstone prototype for CoreStack cloud telemetry. The main de
 - SQLite-backed operational audit trail
 - Simulated Lambda/serverless action logs
 
-## How The Agent Runs
+## How The Platform Runs
 
 ```text
-User Question + Dataset Context
+Browser Command Center
+        ->
+FastAPI API Gateway
         ->
 FinOps Analyst Agent
         ->
@@ -32,18 +36,22 @@ Internal Tools
   - Pipeline/Action Audit Tools
         ->
 Answer + Recommendations + Evidence + Next Action
+        ->
+Browser visualizes state
 ```
 
-Data ingestion and synthetic data generation are treated as **data pipelines/tools**, not as the main user-facing agent.
+Data ingestion and synthetic data generation are treated as **data pipelines/tools**, not as the main user-facing agent. The Streamlit screens remain as backup dashboards, but the primary demo path is API-first.
 
 ## Repository Contents
 
 ```text
-agentic_command_center.py   # Main FinOps Analyst Agent command center
+api/main.py                 # FastAPI API gateway and endpoints
+frontend/                   # Non-Streamlit command center served by FastAPI
+agentic_command_center.py   # Legacy Streamlit command center fallback
 agents/analyst.py           # FinOpsAnalystAgent, DatasetProfiler, RequirementChecker
 agents/                     # Shared contracts, storage, and operational audit bootstrap
-dashboard.py                # VM forecasting and recommendation dashboard
-DbDashboard.py              # Application and database intelligence dashboard
+dashboard.py                # Legacy VM forecasting Streamlit dashboard
+DbDashboard.py              # Legacy application/DB Streamlit dashboard
 ingestion/                  # Normalized telemetry schema and adapters
 tools/                      # Data extraction, augmentation, context generation, DB metric generation
 docs/DATA_STRATEGY.md       # Paper-safe data strategy, provenance, and limitations
@@ -104,22 +112,35 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 4. Run the FinOps Analyst Agent command center
+### 4. Run the API-backed command center
 
 ```bash
-streamlit run agentic_command_center.py
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-This is the main Phase 3 demo. It shows:
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+API docs:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+The command center shows:
 
 - Ask-the-agent question panel
+- FastAPI health and API-backed query execution
 - Dataset identification
 - Data requirement checklist
 - Final answer and next action
 - Recommendation/evidence table with cost, criticality, approval, incidents, and savings
-- Hybrid data strategy and provenance table
-- Architecture showing one visible agent and internal tools
-- Operational audit trail below the main demo
+- Hybrid data profile and source mix
+- Architecture showing browser -> API -> agent -> tools
+- Operational audit trail below the main agent answer
 
 Prepared demo questions:
 
@@ -130,25 +151,38 @@ Prepared demo questions:
 - Is DB data required for this question?
 - Why is this VM recommended?
 
-### 5. Run the VM forecasting dashboard
+## Useful API Endpoints
 
-Open a second terminal, activate the venv again, then run:
-
-```bash
-streamlit run dashboard.py --server.port 8501
+```text
+GET  /api/health
+GET  /api/questions
+GET  /api/dataset-profile
+POST /api/query
+GET  /api/architecture
+GET  /api/operational/summary
+GET  /api/operational/audit
+POST /api/operational/refresh
 ```
 
-This shows fleet overview, recommendations, augmentation view, workload classes, predictive model performance, correlation analysis, and workflow execution logs.
-
-### 6. Run the application/DB dashboard
-
-Open another terminal, activate the venv again, then run:
+Example query:
 
 ```bash
+curl -X POST http://127.0.0.1:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Which VMs can be shut down during low peak hours?","time_window":"latest_48h","cloud":"azure"}'
+```
+
+## Optional Legacy Streamlit Dashboards
+
+The project still includes Streamlit dashboards as fallback views.
+
+```bash
+streamlit run agentic_command_center.py --server.port 8506
+streamlit run dashboard.py --server.port 8501
 streamlit run DbDashboard.py --server.port 8502
 ```
 
-This shows application tags, DB metrics, VM-to-DB health impact, application health scorecard, and application-triggered function logs.
+Use the FastAPI command center as the main Vijay demo because it better matches a production platform architecture.
 
 ## Regenerate Hybrid Context
 
@@ -162,14 +196,15 @@ This creates inventory, cost, incident, action, pipeline, and provenance dataset
 
 ## Recommended Vijay Demo Order
 
-1. Open `agentic_command_center.py`.
-2. Show the architecture: one FinOps Analyst Agent, internal tools, hybrid knowledge context, and data pipelines.
-3. Ask: "Which VMs can be shut down during low peak hours?"
-4. Show dataset profile, requirement check, answer, recommendations, savings, and evidence.
-5. Open "Hybrid data strategy for demo and paper" and show provenance.
-6. Ask: "Which applications are degraded?"
-7. Explain that DB metrics are required for app health questions but not required for VM shutdown questions.
-8. Show the operational audit trail only after the main agent answer.
+1. Run `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload`.
+2. Open `http://127.0.0.1:8000`.
+3. Show the architecture: browser dashboard, FastAPI API gateway, one FinOps Analyst Agent, internal tools, hybrid knowledge context, and data pipelines.
+4. Ask: "Which VMs can be shut down during low peak hours?"
+5. Show dataset profile, requirement check, answer, recommendations, savings, and evidence.
+6. Show the source mix/provenance section for paper-safe claims.
+7. Ask: "Which applications are degraded?"
+8. Open `http://127.0.0.1:8000/docs` to show the API contract.
+9. Show the operational audit trail only after the main agent answer.
 
 ## Where AI Comes In
 
@@ -196,4 +231,4 @@ For normal clone-and-run demos, this step is not required.
 
 **Agentic Proactive FinOps Governance for CoreStack Telemetry**
 
-A command center where one FinOps Analyst Agent identifies current data, checks what is required, answers operational questions, recommends cost/risk actions, and shows evidence for every recommendation.
+A command center where the browser visualizes an API-backed FinOps Analyst Agent that identifies current data, checks what is required, answers operational questions, recommends cost/risk actions, and shows evidence for every recommendation.
