@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agentic FinOps Command Center</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="/assets/styles.css?v=4" />
   </head>
   <body>
     <div class="shell">
@@ -19,9 +19,10 @@
         <nav class="nav">
           <a href="#ask" class="active">Ask Agent</a>
           <a href="#usecase">Use Case</a>
-          <a href="#events">Event Stream</a>
+          <a href="#agent-output">Agent Response</a>
           <a href="#requirements">Requirements</a>
           <a href="#recommendations">Recommendations</a>
+          <a href="#events">Event Stream</a>
           <a href="#data">Data Profile</a>
           <a href="#architecture">Architecture</a>
           <a href="#audit">Audit Trail</a>
@@ -102,38 +103,10 @@
             </label>
             <button id="run-agent" class="primary-button">Run Agent</button>
           </div>
+          <div id="run-status" class="run-status">Choose a question and run the agent. The answer appears immediately below.</div>
         </section>
 
-        <section id="events" class="panel event-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Event-Driven Orchestration</h2>
-              <p>Telemetry and failure events are persisted, consumed by the Coordinator Agent, and expanded into downstream events.</p>
-            </div>
-            <span class="pill">/api/events/demo-run</span>
-          </div>
-          <div class="event-layout">
-            <div>
-              <div class="event-flow" id="event-flow"></div>
-              <div id="event-summary" class="evidence-strip event-summary"></div>
-            </div>
-            <div class="coordinator-card">
-              <span>Coordinator State</span>
-              <strong id="coordinator-status">-</strong>
-              <p id="coordinator-decision">Waiting for events</p>
-              <dl>
-                <div><dt>Last event</dt><dd id="coordinator-last-event">-</dd></div>
-                <div><dt>Processed</dt><dd id="coordinator-processed">-</dd></div>
-                <div><dt>Failed</dt><dd id="coordinator-failed">-</dd></div>
-              </dl>
-            </div>
-          </div>
-          <div class="table-wrap event-table-wrap">
-            <table id="events-table"></table>
-          </div>
-        </section>
-
-        <section class="split">
+        <section id="agent-output" class="split">
           <div class="panel response-panel">
             <div class="panel-heading compact">
               <h2>Agent Response</h2>
@@ -165,6 +138,35 @@
           <div id="evidence-strip" class="evidence-strip"></div>
           <div class="table-wrap">
             <table id="recommendations-table"></table>
+          </div>
+        </section>
+
+        <section id="events" class="panel event-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Event-Driven Orchestration</h2>
+              <p>Telemetry and failure events are persisted, consumed by the Coordinator Agent, and expanded into downstream events.</p>
+            </div>
+            <span class="pill">/api/events/demo-run</span>
+          </div>
+          <div class="event-layout">
+            <div>
+              <div class="event-flow" id="event-flow"></div>
+              <div id="event-summary" class="evidence-strip event-summary"></div>
+            </div>
+            <div class="coordinator-card">
+              <span>Coordinator State</span>
+              <strong id="coordinator-status">-</strong>
+              <p id="coordinator-decision">Waiting for events</p>
+              <dl>
+                <div><dt>Last event</dt><dd id="coordinator-last-event">-</dd></div>
+                <div><dt>Processed</dt><dd id="coordinator-processed">-</dd></div>
+                <div><dt>Failed</dt><dd id="coordinator-failed">-</dd></div>
+              </dl>
+            </div>
+          </div>
+          <div class="table-wrap event-table-wrap">
+            <table id="events-table"></table>
           </div>
         </section>
 
@@ -202,6 +204,6 @@
       </main>
     </div>
 
-    <script src="/assets/app.js" defer></script>
+    <script src="/assets/app.js?v=4" defer></script>
   </body>
 </html>

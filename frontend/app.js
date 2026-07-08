@@ -34,6 +34,13 @@ function setApiStatus(ok, text) {
   $("#api-status").textContent = text;
 }
 
+function setRunStatus(text, kind = "idle") {
+  const target = $("#run-status");
+  if (!target) return;
+  target.textContent = text;
+  target.className = `run-status ${kind}`;
+}
+
 function renderKeyValueGrid(target, rows, className) {
   target.innerHTML = rows.map((row) => `
     <div class="${className}">
@@ -165,22 +172,33 @@ function renderAudit() {
   renderTable($("#audit-table"), state.audit[state.activeAuditTab] || []);
 }
 
-async function runAgent() {
+async function runAgent(options = {}) {
   const button = $("#run-agent");
   const custom = $("#custom-question").value.trim();
   const selected = $("#question-select").value;
+  const question = custom || selected;
   button.disabled = true;
   button.textContent = "Running";
+  setRunStatus(`Running FinOps Analyst Agent for: ${question}`, "running");
+  $("#answer-text").textContent = "Analyzing telemetry, requirements, recommendations, and evidence...";
   try {
     const answer = await api("/api/query", {
       method: "POST",
       body: JSON.stringify({
-        question: custom || selected,
+        question,
         time_window: $("#time-window").value,
-        cloud: "azure",
+        cloud: "multi-cloud",
       }),
     });
     renderAnswer(answer);
+    setRunStatus("Answer updated below. Requirements and evidence are refreshed too.", "success");
+    if (!options.silent) {
+      $("#agent-output").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  } catch (error) {
+    console.error(error);
+    setRunStatus(`Agent failed: ${error.message}`, "error");
+    $("#answer-text").textContent = `Agent failed: ${error.message}`;
   } finally {
     button.disabled = false;
     button.textContent = "Run Agent";
@@ -227,7 +245,7 @@ async function init() {
     renderProfile(await api("/api/dataset-profile"));
     renderArchitecture(await api("/api/architecture"));
     await refreshEvents();
-    await runAgent();
+    await runAgent({ silent: true });
     await refreshAudit(false);
     window.setInterval(refreshEvents, 5000);
   } catch (error) {

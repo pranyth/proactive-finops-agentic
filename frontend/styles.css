@@ -324,6 +324,34 @@ select {
   color: var(--ink);
 }
 
+.run-status {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f8fafc;
+  color: var(--muted);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.run-status.running {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.run-status.success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.run-status.error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(280px, 0.8fr);
@@ -645,7 +673,7 @@ tr:last-child td {
 
 .event-table-wrap {
   margin-top: 12px;
-  max-height: 420px;
+  max-height: 260px;
 }
 
 .event-summary {
