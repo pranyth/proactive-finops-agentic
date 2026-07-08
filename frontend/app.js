@@ -1,6 +1,8 @@
-﻿const state = {
+const state = {
   answer: null,
   audit: null,
+  events: null,
+  architecture: null,
   activeAuditTab: "agent_runs",
 };
 
@@ -10,6 +12,7 @@ function fmt(value) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return JSON.stringify(value).slice(0, 220);
   return String(value);
 }
 
@@ -86,10 +89,6 @@ function renderAnswer(answer) {
 function renderProfile(profile) {
   $("#metric-vms").textContent = fmt(profile.vm_count);
   $("#metric-vm-rows").textContent = fmt(profile.vm_rows);
-  $("#metric-cost-rows").textContent = fmt(profile.cost_rows);
-  $("#metric-incidents").textContent = fmt(profile.incident_rows);
-  $("#metric-pipelines").textContent = fmt(profile.pipeline_rows);
-  $("#metric-actions").textContent = fmt(profile.action_rows);
 
   renderKeyValueGrid($("#profile-grid"), [
     { label: "Dataset", value: profile.dataset_name },
@@ -107,7 +106,9 @@ function renderProfile(profile) {
 }
 
 function renderArchitecture(architecture) {
+  state.architecture = architecture;
   $("#architecture-flow").innerHTML = architecture.flow.map((step) => `<div class="flow-step">${step}</div>`).join("");
+  $("#event-flow").innerHTML = (architecture.event_flow || []).map((step) => `<div class="event-step">${step}</div>`).join("");
   $("#component-grid").innerHTML = architecture.components.map((item) => `
     <div class="component-item">
       <span>${item.role}</span>
@@ -117,8 +118,44 @@ function renderArchitecture(architecture) {
   `).join("");
 }
 
+function compactEventRows(events) {
+  return (events || []).map((event) => ({
+    created_at: event.created_at,
+    event_type: event.event_type,
+    source: event.source,
+    status: event.status,
+    attempts: event.attempts,
+    correlation_id: event.correlation_id,
+    result_summary: event.result_summary,
+  }));
+}
+
+function renderEvents(data) {
+  state.events = data;
+  const summary = data.summary || {};
+  const coordinator = data.coordinator || {};
+  $("#metric-events").textContent = fmt(summary.total_events);
+  $("#metric-events-processed").textContent = fmt(summary.processed_events);
+  renderKeyValueGrid($("#event-summary"), [
+    { label: "Total Events", value: summary.total_events },
+    { label: "Pending", value: summary.pending_events },
+    { label: "Processed", value: summary.processed_events },
+    { label: "Failed", value: summary.failed_events },
+  ], "evidence-item");
+  $("#coordinator-status").textContent = fmt(coordinator.status);
+  $("#coordinator-decision").textContent = fmt(coordinator.last_decision);
+  $("#coordinator-last-event").textContent = fmt(coordinator.last_event_type);
+  $("#coordinator-processed").textContent = fmt(coordinator.events_processed);
+  $("#coordinator-failed").textContent = fmt(coordinator.events_failed);
+  renderTable($("#events-table"), compactEventRows(data.events));
+}
+
 function renderAudit() {
   if (!state.audit) return;
+  if (state.activeAuditTab === "events") {
+    renderTable($("#audit-table"), compactEventRows(state.audit.events));
+    return;
+  }
   renderTable($("#audit-table"), state.audit[state.activeAuditTab] || []);
 }
 
@@ -144,6 +181,24 @@ async function runAgent() {
   }
 }
 
+async function runEventDemo() {
+  const button = $("#run-event-demo");
+  button.disabled = true;
+  button.textContent = "Running Events";
+  try {
+    await api("/api/events/demo-run", { method: "POST", body: JSON.stringify({}) });
+    await refreshEvents();
+    await refreshAudit(false);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Run Event Demo";
+  }
+}
+
+async function refreshEvents() {
+  renderEvents(await api("/api/events"));
+}
+
 async function refreshAudit(force = false) {
   if (force) {
     await api("/api/operational/refresh", { method: "POST", body: JSON.stringify({ force: true }) });
@@ -151,10 +206,10 @@ async function refreshAudit(force = false) {
   state.audit = await api("/api/operational/audit");
   renderAudit();
   const summary = await api("/api/operational/summary");
-  if (!state.answer) {
-    $("#metric-pipelines").textContent = fmt(summary.pipeline_runs);
-    $("#metric-actions").textContent = fmt(summary.serverless_actions);
-  }
+  $("#metric-pipelines").textContent = fmt(summary.pipeline_runs);
+  $("#metric-actions").textContent = fmt(summary.serverless_actions);
+  if (summary.events !== undefined) $("#metric-events").textContent = fmt(summary.events);
+  if (summary.processed_events !== undefined) $("#metric-events-processed").textContent = fmt(summary.processed_events);
 }
 
 async function init() {
@@ -165,8 +220,10 @@ async function init() {
     $("#question-select").innerHTML = questions.questions.map((question) => `<option value="${question}">${question}</option>`).join("");
     renderProfile(await api("/api/dataset-profile"));
     renderArchitecture(await api("/api/architecture"));
+    await refreshEvents();
     await runAgent();
     await refreshAudit(false);
+    window.setInterval(refreshEvents, 5000);
   } catch (error) {
     console.error(error);
     setApiStatus(false, "API error");
@@ -175,6 +232,7 @@ async function init() {
 }
 
 $("#run-agent").addEventListener("click", runAgent);
+$("#run-event-demo").addEventListener("click", runEventDemo);
 $("#refresh-demo").addEventListener("click", () => refreshAudit(true));
 
 document.querySelectorAll(".tab").forEach((tab) => {

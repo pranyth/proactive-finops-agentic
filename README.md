@@ -1,10 +1,12 @@
-﻿# Agentic Proactive FinOps Governance
+# Agentic Proactive FinOps Governance
 
-A production-style capstone prototype for CoreStack cloud telemetry. The main demo is now a **FastAPI-backed FinOps Analyst Agent platform**: the browser calls APIs, the API gateway calls the agent, and the UI only visualizes returned system state.
+A production-style capstone prototype for CoreStack cloud telemetry. The main demo is now a **FastAPI-backed, event-driven FinOps Analyst Agent platform**: telemetry/failure events enter an API gateway, a Coordinator Agent routes work through internal tools, and the browser only visualizes returned system state.
 
 ## What This Project Shows
 
 - FastAPI API gateway for the visible FinOps Analyst Agent
+- SQLite-backed event bus with pending/processed/failed event states
+- Coordinator Agent and background worker for event-driven orchestration
 - Non-Streamlit web command center served by the API
 - One visible FinOps Analyst Agent entry point
 - Dataset profiling and data requirement checks
@@ -20,24 +22,28 @@ A production-style capstone prototype for CoreStack cloud telemetry. The main de
 ## How The Platform Runs
 
 ```text
-Browser Command Center
+Telemetry/Event API
         ->
-FastAPI API Gateway
+SQLite Event Bus
         ->
-FinOps Analyst Agent
-        ->
-Dataset Profiler + Requirement Checker
+Coordinator Agent + Background Worker
         ->
 Internal Tools
+  - Dataset Profiler
+  - Requirement Checker
   - Recommendation Tool
   - Low-Peak Shutdown Tool
   - Risk Ranking Tool
   - App/DB Health Tool
-  - Pipeline/Action Audit Tools
+  - Serverless Action Router
         ->
-Answer + Recommendations + Evidence + Next Action
+Stored events + recommendations + action logs
         ->
 Browser visualizes state
+
+Direct user questions still use:
+
+Browser Command Center -> FastAPI /api/query -> FinOps Analyst Agent -> Answer
 ```
 
 Data ingestion and synthetic data generation are treated as **data pipelines/tools**, not as the main user-facing agent. The Streamlit screens remain as backup dashboards, but the primary demo path is API-first.
@@ -45,8 +51,8 @@ Data ingestion and synthetic data generation are treated as **data pipelines/too
 ## Repository Contents
 
 ```text
-api/main.py                 # FastAPI API gateway and endpoints
-frontend/                   # Non-Streamlit command center served by FastAPI
+api/main.py                 # FastAPI API gateway, event endpoints, and coordinator worker startup
+frontend/                   # Non-Streamlit command center with agent query, event stream, and audit views
 agentic_command_center.py   # Legacy Streamlit command center fallback
 agents/analyst.py           # FinOpsAnalystAgent, DatasetProfiler, RequirementChecker
 agents/                     # Shared contracts, storage, and operational audit bootstrap
@@ -132,6 +138,9 @@ http://127.0.0.1:8000/docs
 
 The command center shows:
 
+- Event-driven orchestration panel with Coordinator Agent status
+- Event stream for telemetry, forecast, recommendation, pipeline failure, and serverless action events
+
 - Ask-the-agent question panel
 - FastAPI health and API-backed query execution
 - Dataset identification
@@ -139,7 +148,7 @@ The command center shows:
 - Final answer and next action
 - Recommendation/evidence table with cost, criticality, approval, incidents, and savings
 - Hybrid data profile and source mix
-- Architecture showing browser -> API -> agent -> tools
+- Architecture showing telemetry events -> event bus -> coordinator -> internal tools -> stored results
 - Operational audit trail below the main agent answer
 
 Prepared demo questions:
@@ -159,6 +168,10 @@ GET  /api/questions
 GET  /api/dataset-profile
 POST /api/query
 GET  /api/architecture
+GET  /api/events
+POST /api/events/telemetry
+POST /api/events/pipeline-failure
+POST /api/events/demo-run
 GET  /api/operational/summary
 GET  /api/operational/audit
 POST /api/operational/refresh
@@ -198,13 +211,15 @@ This creates inventory, cost, incident, action, pipeline, and provenance dataset
 
 1. Run `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload`.
 2. Open `http://127.0.0.1:8000`.
-3. Show the architecture: browser dashboard, FastAPI API gateway, one FinOps Analyst Agent, internal tools, hybrid knowledge context, and data pipelines.
-4. Ask: "Which VMs can be shut down during low peak hours?"
-5. Show dataset profile, requirement check, answer, recommendations, savings, and evidence.
-6. Show the source mix/provenance section for paper-safe claims.
-7. Ask: "Which applications are degraded?"
-8. Open `http://127.0.0.1:8000/docs` to show the API contract.
-9. Show the operational audit trail only after the main agent answer.
+3. Show the architecture: event API, SQLite Event Bus, Coordinator Agent, internal tools, hybrid knowledge context, and stored results.
+4. Click **Run Event Demo** and show `telemetry.received -> forecast.completed -> recommendation.created -> serverless.action.created`.
+5. Show Coordinator State and Event Stream.
+6. Ask: "Which VMs can be shut down during low peak hours?"
+7. Show dataset profile, requirement check, answer, recommendations, savings, and evidence.
+8. Show the source mix/provenance section for paper-safe claims.
+9. Ask: "Which applications are degraded?"
+10. Open `http://127.0.0.1:8000/docs` to show the API contract.
+11. Show the operational audit trail only after the main agent answer.
 
 ## Where AI Comes In
 

@@ -44,11 +44,25 @@ class AgentAnswer:
 
 AGENT_CATALOG = [
     {
+        "component": "SQLite Event Bus",
+        "role": "Event transport layer",
+        "input": "telemetry.received, pipeline.failed, forecast.completed, recommendation.created events",
+        "output": "Persisted event stream with pending/processed/failed status",
+        "how_it_runs": "FastAPI event endpoints publish events; EventWorker claims pending events",
+    },
+    {
+        "component": "Coordinator Agent",
+        "role": "Event orchestrator",
+        "input": "Pending event envelopes from the event bus",
+        "output": "Downstream events, audit records, and serverless action payloads",
+        "how_it_runs": "Background EventWorker calls CoordinatorAgent.handle_event(event)",
+    },
+    {
         "component": "FinOps Analyst Agent",
-        "role": "Visible entry point",
+        "role": "Visible question entry point",
         "input": "User question + selected dataset context",
         "output": "Answer, recommendation table, requirement check, evidence, next action",
-        "how_it_runs": "FastAPI /api/query calls FinOpsAnalystAgent.run(question, context)",
+        "how_it_runs": "FastAPI /api/query handles direct questions; event flow reaches the analyst through Coordinator Agent routes",
     },
     {
         "component": "Dataset Profiler",
@@ -67,9 +81,9 @@ AGENT_CATALOG = [
     {
         "component": "Recommendation Tool",
         "role": "Internal tool",
-        "input": "VM metrics, workload class, tags, latest 48h utilization",
-        "output": "Shutdown, scale-down, risk, and explanation rows",
-        "how_it_runs": "Called only for recommendation questions",
+        "input": "VM metrics, workload class, tags, latest 48h utilization, enterprise context",
+        "output": "Shutdown, scale-down, risk, savings, and explanation rows",
+        "how_it_runs": "Called for recommendation questions and forecast-completed events",
     },
     {
         "component": "App/DB Health Tool",
@@ -77,6 +91,13 @@ AGENT_CATALOG = [
         "input": "DB metrics + application mapping",
         "output": "Application health and degradation summary",
         "how_it_runs": "Called only for application health questions",
+    },
+    {
+        "component": "Serverless Action Router",
+        "role": "Action orchestration tool",
+        "input": "recommendation.created or pipeline.failed events",
+        "output": "Lambda-style payloads and serverless action logs",
+        "how_it_runs": "Coordinator publishes serverless.action.created events; EventWorker logs action results",
     },
     {
         "component": "Data Ingestion Pipeline",
@@ -96,7 +117,7 @@ AGENT_CATALOG = [
         "component": "Operational Audit Trail",
         "role": "Observability layer",
         "input": "Internal tool/pipeline execution events",
-        "output": "Run history, pipeline status, action logs",
+        "output": "Run history, pipeline status, event stream, action logs",
         "how_it_runs": "Returned by operational API endpoints and visualized below the main answer",
     },
 ]
