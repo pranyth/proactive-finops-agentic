@@ -2,6 +2,40 @@
 
 A production-style capstone prototype for multi-cloud telemetry. The main demo is now a **FastAPI-backed, event-driven FinOps Analyst Agent platform**: telemetry/failure events enter an API gateway, a Coordinator Agent routes work through internal tools, and the browser only visualizes returned system state.
 
+## Main Use Case
+
+The main user is a FinOps or cloud-ops operator. Their core question is:
+
+> Which multi-cloud VMs can be safely shut down or rightsized, why, what savings/risk does that create, and what serverless action would be triggered?
+
+Everything in the demo supports that operator flow: telemetry enters the platform, the Coordinator Agent processes events, the FinOps Analyst Agent explains recommendations, and the dashboard visualizes evidence and audit logs.
+
+## Quick Start
+
+```bash
+git clone https://github.com/pranyth/proactive-finops-agentic.git
+cd proactive-finops-agentic
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python run_demo.py
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/pranyth/proactive-finops-agentic.git
+cd proactive-finops-agentic
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python run_demo.py
+```
+
+Open `http://127.0.0.1:8000`. If the port is busy, run `python run_demo.py --port 8010`.
+
+For a shorter handoff, see `QUICKSTART.md`.
+
 ## What This Project Shows
 
 - FastAPI API gateway for the visible FinOps Analyst Agent
@@ -126,7 +160,13 @@ pip install -r requirements.txt
 ### 4. Run the API-backed command center
 
 ```bash
-uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+python run_demo.py
+```
+
+For development reload mode, use:
+
+```bash
+python run_demo.py --reload
 ```
 
 Open:
@@ -215,7 +255,7 @@ This creates inventory, cost, incident, action, pipeline, multi-cloud telemetry,
 
 ## Recommended Vijay Demo Order
 
-1. Run `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload`.
+1. Run `python run_demo.py`.
 2. Open `http://127.0.0.1:8000`.
 3. Show the architecture: event API, SQLite Event Bus, Coordinator Agent, internal tools, hybrid knowledge context, and stored results.
 4. Click **Run Event Demo** and show `telemetry.received -> forecast.completed -> recommendation.created -> serverless.action.created`.

@@ -18,6 +18,7 @@
         </div>
         <nav class="nav">
           <a href="#ask" class="active">Ask Agent</a>
+          <a href="#usecase">Use Case</a>
           <a href="#events">Event Stream</a>
           <a href="#requirements">Requirements</a>
           <a href="#recommendations">Recommendations</a>
@@ -51,6 +52,27 @@
           <div class="metric"><span>Processed</span><strong id="metric-events-processed">-</strong></div>
           <div class="metric"><span>Pipeline Runs</span><strong id="metric-pipelines">-</strong></div>
           <div class="metric"><span>Actions</span><strong id="metric-actions">-</strong></div>
+        </section>
+
+        <section id="usecase" class="panel usecase-panel">
+          <div class="panel-heading compact">
+            <h2>Main Use Case</h2>
+            <span class="pill">FinOps operator flow</span>
+          </div>
+          <div class="usecase-grid">
+            <div class="usecase-item">
+              <span>Primary question</span>
+              <strong>Which VMs can be shut down or rightsized safely?</strong>
+            </div>
+            <div class="usecase-item">
+              <span>Evidence used</span>
+              <strong>Provider, utilization, cost, app tags, criticality, incidents</strong>
+            </div>
+            <div class="usecase-item">
+              <span>Outcome</span>
+              <strong>Recommendation, risk, savings, serverless action, audit trail</strong>
+            </div>
+          </div>
         </section>
 
         <section id="ask" class="panel agent-panel">

@@ -238,6 +238,36 @@ h2 {
   margin-bottom: 16px;
 }
 
+.usecase-panel {
+  border-left: 4px solid var(--teal);
+}
+
+.usecase-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.usecase-item {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.usecase-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.usecase-item strong {
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
 .panel-heading {
   display: flex;
   align-items: flex-start;
@@ -486,6 +516,7 @@ tr:last-child td {
   .query-grid,
   .split,
   .flow,
+  .usecase-grid,
   .requirement-list,
   .profile-grid,
   .evidence-strip,
@@ -509,6 +540,7 @@ tr:last-child td {
   .query-grid,
   .split,
   .flow,
+  .usecase-grid,
   .requirement-list,
   .profile-grid,
   .evidence-strip,
