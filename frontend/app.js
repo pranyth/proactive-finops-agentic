@@ -314,9 +314,11 @@ function renderAudit() {
 
 async function runAgent(options = {}) {
   const button = $("#run-agent");
-  const custom = $("#custom-question").value.trim();
-  const selected = $("#question-select").value;
-  const question = custom || selected;
+  const question = $("#custom-question").value.trim();
+  if (!question) {
+    setRunStatus("Type a question before running the agent.", "error");
+    return;
+  }
   button.disabled = true;
   button.textContent = "Running";
   setRunStatus(`Running FinOps Analyst Agent for: ${question}`, "running");
@@ -375,8 +377,6 @@ async function init() {
   try {
     await api("/api/health");
     setApiStatus(true, "API online");
-    const questions = await api("/api/questions");
-    $("#question-select").innerHTML = questions.questions.map((question) => `<option value="${esc(question)}">${esc(question)}</option>`).join("");
     renderProfile(await api("/api/dataset-profile"));
     renderArchitecture(await api("/api/architecture"));
     await refreshEvents();

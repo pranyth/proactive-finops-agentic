@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FinOps Decision Console</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=5" />
+    <link rel="stylesheet" href="/assets/styles.css?v=7" />
   </head>
   <body>
     <div class="shell">
@@ -76,13 +76,9 @@
             <span class="pill">/api/query</span>
           </div>
           <div class="query-grid">
-            <label>
-              Prepared question
-              <select id="question-select"></select>
-            </label>
-            <label>
-              Custom question
-              <input id="custom-question" placeholder="Example: Which VMs are risky?" />
+            <label class="question-field">
+              Ask a question
+              <input id="custom-question" value="Which VMs can be shut down during low peak hours?" placeholder="Ask about shutdowns, scale down, risky VMs, degraded apps, or failed pipelines" />
             </label>
             <label>
               Time window
@@ -94,7 +90,7 @@
             </label>
             <button id="run-agent" class="primary-button">Run Agent</button>
           </div>
-          <div id="run-status" class="run-status">Choose a question and run the agent.</div>
+          <div id="run-status" class="run-status">Type a question and run the agent.</div>
         </section>
 
         <section id="decision" class="decision-layout">
@@ -203,6 +199,6 @@
       </main>
     </div>
 
-    <script src="/assets/app.js?v=5" defer></script>
+    <script src="/assets/app.js?v=7" defer></script>
   </body>
 </html>
