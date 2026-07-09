@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Agentic FinOps Command Center</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=4" />
+    <title>FinOps Decision Console</title>
+    <link rel="stylesheet" href="/assets/styles.css?v=5" />
   </head>
   <body>
     <div class="shell">
@@ -13,19 +13,15 @@
           <div class="brand-mark">AF</div>
           <div>
             <div class="brand-title">Agentic FinOps</div>
-            <div class="brand-subtitle">CoreStack Governance</div>
+            <div class="brand-subtitle">Multi-cloud decisions</div>
           </div>
         </div>
         <nav class="nav">
-          <a href="#ask" class="active">Ask Agent</a>
-          <a href="#usecase">Use Case</a>
-          <a href="#agent-output">Agent Response</a>
-          <a href="#requirements">Requirements</a>
-          <a href="#recommendations">Recommendations</a>
-          <a href="#events">Event Stream</a>
-          <a href="#data">Data Profile</a>
-          <a href="#architecture">Architecture</a>
-          <a href="#audit">Audit Trail</a>
+          <a href="#ask" class="active">Ask</a>
+          <a href="#decision">Decision</a>
+          <a href="#selected-decision">Why + Action</a>
+          <a href="#requirements">Data Check</a>
+          <a href="#operations">Operations</a>
         </nav>
         <div class="status-box">
           <span class="status-dot"></span>
@@ -36,51 +32,46 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <h1>FinOps Analyst Command Center</h1>
-            <p>Multi-cloud FinOps command center with an event bus, coordinator worker, and one visible FinOps Analyst Agent.</p>
+            <p class="eyebrow">Agentic Proactive FinOps Governance</p>
+            <h1>FinOps Decision Console</h1>
+            <p>Ask one operational question. The agent returns safe shutdown or rightsizing decisions with evidence, risk, savings, and action payload.</p>
           </div>
           <div class="topbar-actions">
-            <button id="run-event-demo" class="primary-button">Run Event Demo</button>
+            <button id="run-event-demo" class="ghost-button">Run Event Demo</button>
             <button id="refresh-demo" class="ghost-button">Refresh Audit</button>
             <a class="ghost-button" href="/docs" target="_blank" rel="noreferrer">API Docs</a>
           </div>
         </header>
 
         <section class="metric-grid" id="summary-metrics">
-          <div class="metric"><span>Cloud Providers</span><strong id="metric-vms">-</strong></div>
-          <div class="metric"><span>Multi-cloud Rows</span><strong id="metric-vm-rows">-</strong></div>
-          <div class="metric"><span>Events</span><strong id="metric-events">-</strong></div>
-          <div class="metric"><span>Processed</span><strong id="metric-events-processed">-</strong></div>
+          <div class="metric"><span>Providers</span><strong id="metric-vms">-</strong></div>
+          <div class="metric"><span>Telemetry Rows</span><strong id="metric-vm-rows">-</strong></div>
+          <div class="metric"><span>Recommendations</span><strong id="metric-recommendations">-</strong></div>
+          <div class="metric"><span>Monthly Savings</span><strong id="metric-savings">-</strong></div>
           <div class="metric"><span>Pipeline Runs</span><strong id="metric-pipelines">-</strong></div>
           <div class="metric"><span>Actions</span><strong id="metric-actions">-</strong></div>
         </section>
 
-        <section id="usecase" class="panel usecase-panel">
-          <div class="panel-heading compact">
-            <h2>Main Use Case</h2>
-            <span class="pill">FinOps operator flow</span>
+        <section id="usecase" class="usecase-band">
+          <div>
+            <span>Main use case</span>
+            <strong>Which VMs can be shut down or rightsized safely?</strong>
           </div>
-          <div class="usecase-grid">
-            <div class="usecase-item">
-              <span>Primary question</span>
-              <strong>Which VMs can be shut down or rightsized safely?</strong>
-            </div>
-            <div class="usecase-item">
-              <span>Evidence used</span>
-              <strong>Provider, utilization, cost, app tags, criticality, incidents</strong>
-            </div>
-            <div class="usecase-item">
-              <span>Outcome</span>
-              <strong>Recommendation, risk, savings, serverless action, audit trail</strong>
-            </div>
+          <div>
+            <span>Decision evidence</span>
+            <strong>Provider, utilization, cost, tags, criticality, incidents</strong>
+          </div>
+          <div>
+            <span>Final outcome</span>
+            <strong>Explainable recommendation + serverless action payload</strong>
           </div>
         </section>
 
-        <section id="ask" class="panel agent-panel">
+        <section id="ask" class="panel ask-panel">
           <div class="panel-heading">
             <div>
-              <h2>Ask the FinOps Agent</h2>
-              <p>Direct natural-language query path through FastAPI. Operational automation is shown below through the event bus.</p>
+              <h2>Ask The FinOps Agent</h2>
+              <p>The UI only asks and visualizes. The answer comes from the FastAPI-backed analyst agent.</p>
             </div>
             <span class="pill">/api/query</span>
           </div>
@@ -103,107 +94,115 @@
             </label>
             <button id="run-agent" class="primary-button">Run Agent</button>
           </div>
-          <div id="run-status" class="run-status">Choose a question and run the agent. The answer appears immediately below.</div>
+          <div id="run-status" class="run-status">Choose a question and run the agent.</div>
         </section>
 
-        <section id="agent-output" class="split">
-          <div class="panel response-panel">
+        <section id="decision" class="decision-layout">
+          <div id="agent-output" class="panel response-panel">
             <div class="panel-heading compact">
-              <h2>Agent Response</h2>
+              <h2>Agent Answer</h2>
               <span id="intent-pill" class="pill muted">intent</span>
             </div>
             <p id="answer-text" class="answer-text">Run the agent to see the response.</p>
             <div class="next-action"><span>Next action</span><strong id="next-action">-</strong></div>
+            <div id="tools-used" class="tool-list"></div>
           </div>
 
-          <div class="panel tools-panel">
+          <div class="panel decision-panel">
             <div class="panel-heading compact">
-              <h2>Internal Tools</h2>
+              <h2>Top Decisions</h2>
+              <span class="pill muted">click a VM</span>
             </div>
-            <div id="tools-used" class="tool-list"></div>
+            <div id="recommendation-cards" class="recommendation-cards empty-state">No recommendations yet.</div>
+          </div>
+        </section>
+
+        <section id="selected-decision" class="panel selected-panel">
+          <div class="panel-heading compact">
+            <h2>Selected VM: Why + Action</h2>
+            <span id="selected-action-pill" class="pill muted">no selection</span>
+          </div>
+          <div id="selected-summary" class="selected-summary empty-state">Select a recommendation to see the evidence and action payload.</div>
+          <div id="selected-detail-grid" class="detail-grid"></div>
+          <div class="payload-wrap">
+            <div class="payload-heading">
+              <span>Serverless action payload</span>
+              <strong id="payload-function">-</strong>
+            </div>
+            <pre id="action-payload">{}</pre>
           </div>
         </section>
 
         <section id="requirements" class="panel">
           <div class="panel-heading compact">
             <h2>Data Requirement Check</h2>
+            <span class="pill muted">required or not</span>
           </div>
           <div id="requirement-list" class="requirement-list"></div>
         </section>
 
-        <section id="recommendations" class="panel">
-          <div class="panel-heading compact">
-            <h2>Recommendations + Evidence</h2>
-          </div>
-          <div id="evidence-strip" class="evidence-strip"></div>
-          <div class="table-wrap">
-            <table id="recommendations-table"></table>
-          </div>
-        </section>
-
-        <section id="events" class="panel event-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Event-Driven Orchestration</h2>
-              <p>Telemetry and failure events are persisted, consumed by the Coordinator Agent, and expanded into downstream events.</p>
+        <section class="secondary-stack" id="operations">
+          <details class="panel secondary-panel">
+            <summary>Operational Proof: Event-Driven Orchestration</summary>
+            <p class="secondary-note">Use this when Vijay asks how agents are running in the background.</p>
+            <div class="event-layout">
+              <div>
+                <div class="event-flow" id="event-flow"></div>
+                <div id="event-summary" class="evidence-strip event-summary"></div>
+              </div>
+              <div class="coordinator-card">
+                <span>Coordinator State</span>
+                <strong id="coordinator-status">-</strong>
+                <p id="coordinator-decision">Waiting for events</p>
+                <dl>
+                  <div><dt>Last event</dt><dd id="coordinator-last-event">-</dd></div>
+                  <div><dt>Processed</dt><dd id="coordinator-processed">-</dd></div>
+                  <div><dt>Failed</dt><dd id="coordinator-failed">-</dd></div>
+                </dl>
+              </div>
             </div>
-            <span class="pill">/api/events/demo-run</span>
-          </div>
-          <div class="event-layout">
-            <div>
-              <div class="event-flow" id="event-flow"></div>
-              <div id="event-summary" class="evidence-strip event-summary"></div>
+            <div class="table-wrap event-table-wrap">
+              <table id="events-table"></table>
             </div>
-            <div class="coordinator-card">
-              <span>Coordinator State</span>
-              <strong id="coordinator-status">-</strong>
-              <p id="coordinator-decision">Waiting for events</p>
-              <dl>
-                <div><dt>Last event</dt><dd id="coordinator-last-event">-</dd></div>
-                <div><dt>Processed</dt><dd id="coordinator-processed">-</dd></div>
-                <div><dt>Failed</dt><dd id="coordinator-failed">-</dd></div>
-              </dl>
+          </details>
+
+          <details class="panel secondary-panel">
+            <summary>Full Recommendations + Evidence</summary>
+            <div id="evidence-strip" class="evidence-strip"></div>
+            <div class="table-wrap">
+              <table id="recommendations-table"></table>
             </div>
-          </div>
-          <div class="table-wrap event-table-wrap">
-            <table id="events-table"></table>
-          </div>
-        </section>
+          </details>
 
-        <section id="data" class="panel">
-          <div class="panel-heading compact">
-            <h2>Dataset Profile + Provenance</h2>
-          </div>
-          <div id="profile-grid" class="profile-grid"></div>
-          <div id="source-mix" class="source-mix"></div>
-        </section>
+          <details class="panel secondary-panel">
+            <summary>Dataset Profile + Provenance</summary>
+            <div id="profile-grid" class="profile-grid"></div>
+            <div id="source-mix" class="source-mix"></div>
+          </details>
 
-        <section id="architecture" class="panel">
-          <div class="panel-heading compact">
-            <h2>Architecture</h2>
-          </div>
-          <div class="flow" id="architecture-flow"></div>
-          <div class="component-grid" id="component-grid"></div>
-        </section>
+          <details class="panel secondary-panel">
+            <summary>Architecture</summary>
+            <div class="flow" id="architecture-flow"></div>
+            <div class="component-grid" id="component-grid"></div>
+          </details>
 
-        <section id="audit" class="panel">
-          <div class="panel-heading compact">
-            <h2>Operational Audit Trail</h2>
-          </div>
-          <div class="audit-tabs">
-            <button class="tab active" data-tab="agent_runs">Agent Runs</button>
-            <button class="tab" data-tab="events">Events</button>
-            <button class="tab" data-tab="pipeline_runs">Pipeline Runs</button>
-            <button class="tab" data-tab="serverless_actions">Serverless Logs</button>
-            <button class="tab" data-tab="storage">Storage</button>
-          </div>
-          <div class="table-wrap">
-            <table id="audit-table"></table>
-          </div>
+          <details class="panel secondary-panel">
+            <summary>Operational Audit Trail</summary>
+            <div class="audit-tabs">
+              <button class="tab active" data-tab="agent_runs">Agent Runs</button>
+              <button class="tab" data-tab="events">Events</button>
+              <button class="tab" data-tab="pipeline_runs">Pipeline Runs</button>
+              <button class="tab" data-tab="serverless_actions">Serverless Logs</button>
+              <button class="tab" data-tab="storage">Storage</button>
+            </div>
+            <div class="table-wrap">
+              <table id="audit-table"></table>
+            </div>
+          </details>
         </section>
       </main>
     </div>
 
-    <script src="/assets/app.js?v=4" defer></script>
+    <script src="/assets/app.js?v=5" defer></script>
   </body>
 </html>
