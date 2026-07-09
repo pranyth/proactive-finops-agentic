@@ -37,6 +37,7 @@ RAW_CORESTACK_DIR = Path("corestack_data")
 PREPARED_QUESTIONS = [
     "Which VMs can be shut down during low peak hours?",
     "Which VMs need scale down?",
+    "Which VMs need scale up?",
     "Which VMs are risky?",
     "Which applications are degraded?",
     "Is DB data required for this question?",
@@ -235,6 +236,11 @@ class RequirementChecker:
             base["Enterprise inventory"] = "Available and important"
             base["Cost metrics"] = "Available and important"
             base["Multi-cloud schema"] = "Available and important"
+        elif intent == "scale_up":
+            base["Enterprise inventory"] = "Available and important"
+            base["Cost metrics"] = "Not required for scale-up decision"
+            base["Incident history"] = "Available and important"
+            base["Multi-cloud schema"] = "Available and important"
         elif intent == "risky_vms":
             base["Incident history"] = "Available and important"
 
@@ -261,6 +267,8 @@ class FinOpsAnalystAgent:
             answer, recs, evidence, tools, next_action = self._answer_low_peak_shutdown()
         elif intent == "scale_down":
             answer, recs, evidence, tools, next_action = self._answer_scale_down()
+        elif intent == "scale_up":
+            answer, recs, evidence, tools, next_action = self._answer_scale_up()
         elif intent == "risky_vms":
             answer, recs, evidence, tools, next_action = self._answer_risky_vms()
         elif intent == "application_degraded":
@@ -291,9 +299,11 @@ class FinOpsAnalystAgent:
         q = question.lower()
         if "shut" in q or "shutdown" in q or "low peak" in q or "less peak" in q:
             return "low_peak_shutdown"
+        if "scale up" in q or "scale-up" in q or "increase capacity" in q or "upgrade vm" in q or "needs more capacity" in q:
+            return "scale_up"
         if "scale down" in q or "downsize" in q or "underutil" in q:
             return "scale_down"
-        if "risky" in q or "risk" in q or "scale up" in q or "spike" in q:
+        if "risky" in q or "risk" in q or "spike" in q:
             return "risky_vms"
         if "application" in q and ("degraded" in q or "risk" in q or "health" in q):
             return "application_degraded"
@@ -553,7 +563,13 @@ class FinOpsAnalystAgent:
 
     def _answer_scale_down(self):
         recs_df = self._vm_recommendation_frame()
-        candidates = recs_df[recs_df["Scale Down Candidate"]].sort_values("Estimated Savings Monthly USD", ascending=False).head(12)
+        candidates = recs_df[recs_df["Scale Down Candidate"] & ~recs_df["Shutdown Candidate"]].copy()
+        candidates = candidates.sort_values("Estimated Savings Monthly USD", ascending=False).head(12)
+        if not candidates.empty:
+            candidates["Recommended Action"] = "SCALE_DOWN"
+            candidates["Reason"] = candidates.apply(
+                lambda row: f"CPU is below dynamic threshold {row['Dynamic Threshold']:.1f}% but this VM is not a shutdown candidate; rightsize instead of stopping it.", axis=1
+            )
         savings = float(candidates["Estimated Savings Monthly USD"].sum()) if not candidates.empty else 0.0
         answer = f"I found {len(candidates)} VMs that can be reviewed for scale down, representing about ${savings:,.2f} in monthly savings potential."
         return (
@@ -564,6 +580,66 @@ class FinOpsAnalystAgent:
             "Validate owner/application impact before rightsizing.",
         )
 
+    def _answer_scale_up(self):
+        recs_df = self._vm_recommendation_frame()
+        if recs_df.empty:
+            return (
+                "I could not evaluate scale-up candidates because VM telemetry is unavailable.",
+                [],
+                {"chart_type": "scale_up_table", "total_candidates": 0},
+                ["Dataset Profiler", "Requirement Checker", "Capacity Review Tool"],
+                "Load VM telemetry before making capacity decisions.",
+            )
+
+        utilization_ratio = recs_df["Max CPU 48h"] / recs_df["Dynamic Threshold"].clip(lower=1)
+        scale_mask = (
+            (recs_df["Avg CPU 48h"] > recs_df["Dynamic Threshold"] * 0.85)
+            | (utilization_ratio > 1.15)
+            | ((recs_df["Business Criticality"] == "high") & (recs_df["Incident Count"] > 0) & (recs_df["Max CPU 48h"] > recs_df["Dynamic Threshold"] * 0.95))
+        ) & (~recs_df["Shutdown Candidate"]) & (~recs_df["Scale Down Candidate"])
+
+        candidates = recs_df.loc[scale_mask].copy()
+        if not candidates.empty:
+            candidates["Recommended Action"] = "SCALE_UP"
+            candidates["Estimated Savings Monthly USD"] = 0.0
+            candidates["Business Impact"] = candidates.apply(
+                lambda row: f"Capacity protection for {row['Environment']} workload; prevents performance risk rather than saving cost.", axis=1
+            )
+            candidates["Reason"] = candidates.apply(
+                lambda row: f"CPU pressure is near/above dynamic threshold {row['Dynamic Threshold']:.1f}%; max CPU {row['Max CPU 48h']:.1f}%, incidents {row['Incident Count']}.", axis=1
+            )
+            candidates = candidates.assign(_ratio=utilization_ratio.loc[candidates.index]).sort_values(
+                ["_ratio", "Incident Count", "Business Criticality"], ascending=[False, False, True]
+            ).drop(columns=["_ratio"]).head(12)
+            answer = f"I found {len(candidates)} VM candidates that may need scale-up review based on CPU pressure, incidents, and business criticality."
+            next_action = "Review these VMs with application owners, then trigger the scale-up action payload only after approval."
+        else:
+            candidates = recs_df.copy()
+            candidates["Utilization Ratio"] = (candidates["Max CPU 48h"] / candidates["Dynamic Threshold"].clip(lower=1)).round(2)
+            candidates = candidates.sort_values(["Utilization Ratio", "Max CPU 48h"], ascending=[False, False]).head(5)
+            candidates["Recommended Action"] = "KEEP_RUNNING"
+            candidates["Estimated Savings Monthly USD"] = 0.0
+            candidates["Confidence"] = 82.0
+            candidates["Business Impact"] = "No scale-up needed from the current telemetry window. Continue monitoring."
+            candidates["Reason"] = candidates.apply(
+                lambda row: f"No scale-up signal: max CPU {row['Max CPU 48h']:.1f}% is within dynamic threshold {row['Dynamic Threshold']:.1f}%; avg CPU {row['Avg CPU 48h']:.1f}%.", axis=1
+            )
+            answer = "I do not find any VM that needs scale-up in the selected telemetry window. The highest-utilization VMs are still within their dynamic thresholds, so the agent recommends KEEP_RUNNING and monitoring."
+            next_action = "No scale-up action should be triggered now; keep monitoring and re-run if CPU spikes or incidents appear."
+
+        return (
+            answer,
+            candidates.to_dict("records"),
+            {
+                "chart_type": "scale_up_table",
+                "total_candidates": int(len(candidates)),
+                "scale_up_required": bool(scale_mask.sum() > 0),
+                "source_note": "Scale-up decisions use CPU pressure, dynamic threshold, incident context, criticality, and environment.",
+            },
+            ["Dataset Profiler", "Requirement Checker", "Capacity Review Tool", "Incident Context Tool", "Dynamic Threshold Tool"],
+            next_action,
+        )
+
     def _answer_risky_vms(self):
         recs_df = self._vm_recommendation_frame()
         recs_df["Risk Score"] = (
@@ -571,7 +647,15 @@ class FinOpsAnalystAgent:
             + recs_df["Incident Count"] * 0.15
             + recs_df["Business Criticality"].map({"high": 0.35, "medium": 0.12, "low": 0.0}).fillna(0)
         ).round(2)
-        risky = recs_df.sort_values("Risk Score", ascending=False).head(12)
+        risky = recs_df.sort_values("Risk Score", ascending=False).head(12).copy()
+        risky["Recommended Action"] = "APPLICATION_REVIEW"
+        risky["Estimated Savings Monthly USD"] = 0.0
+        risky["Business Impact"] = risky.apply(
+            lambda row: f"Review reliability risk for {row['Application']} in {row['Environment']}; avoid automated cost action until validated.", axis=1
+        )
+        risky["Reason"] = risky.apply(
+            lambda row: f"Risk score {row['Risk Score']}; max CPU {row['Max CPU 48h']:.1f}% vs threshold {row['Dynamic Threshold']:.1f}%, incidents {row['Incident Count']}, criticality {row['Business Criticality']}.", axis=1
+        )
         answer = f"The highest-risk VMs combine utilization spikes, incident history, and business criticality. I ranked the top {len(risky)} by composite risk score."
         return (
             answer,
