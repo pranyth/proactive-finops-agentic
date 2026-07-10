@@ -1085,3 +1085,51 @@ td {
   color: #06201d;
   border-color: var(--teal);
 }
+
+
+/* Readability fixes */
+.answer-text {
+  color: #f8fbff;
+  font-weight: 600;
+}
+
+.response-panel .answer-text {
+  background: #0f1722;
+  border: 1px solid #263244;
+  border-radius: 8px;
+  padding: 13px 14px;
+}
+
+.panel p,
+.rec-card p,
+.selected-summary p,
+.component-item p,
+.secondary-note {
+  color: #c7d2e5;
+}
+
+.next-action strong,
+.selected-summary strong,
+.detail-item strong,
+.requirement strong,
+.profile-item strong,
+.source-item strong,
+.evidence-item strong,
+.component-item strong {
+  color: #f8fbff;
+}
+
+label,
+.next-action span,
+.usecase-band span,
+.selected-summary span,
+.payload-heading span,
+.metric span,
+.detail-item span,
+.requirement span,
+.profile-item span,
+.source-item span,
+.evidence-item span,
+.component-item span {
+  color: #b8c4d6;
+}
