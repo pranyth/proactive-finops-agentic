@@ -36,14 +36,47 @@ Raw VM telemetry can answer first-pass utilization questions, but autonomous Fin
 
 Without these fields, a system can identify idle VMs, but it cannot responsibly recommend shutdowns or explain business impact.
 
+## Generated Fleet Telemetry
+
+`tools/generate_fleet_telemetry.py` builds the synthetic portion of
+`data/augmented_vm_metrics.csv` from explicit workload archetypes rather than
+from one shared hourly profile. Each archetype carries its own daily and weekly
+signature, so the estate contains machines that genuinely differ from each other:
+
+| Archetype | Shape | Drives |
+|---|---|---|
+| `zombie` | flat, near zero | `SCHEDULE_SHUTDOWN` |
+| `oversized` | business hours, low ceiling | `SCALE_DOWN` |
+| `dev_workstation` | weekdays 10-18, dead at weekends | `SCALE_DOWN` |
+| `ci_runner` | spiky weekday bursts | rightsizing with burst headroom |
+| `batch_nightly` | inverted: peaks 01:00-04:00 | why a 48h window is not enough |
+| `interactive_web` | clean office-hours curve | healthy baseline |
+| `api_backend` | always-on, mild day/night swing | healthy baseline |
+| `database` | steady CPU, high memory and disk | memory-constrained sizing |
+| `memory_bound` | low CPU, very high memory | the rightsizing trap |
+| `saturated` | high and trending up | `SCALE_UP` |
+
+The two CoreStack machines (`cspbi-prod-ir-Europe`, `cs-prod-ir-vm-india`) are
+copied through untouched and stay labelled `augmented=False`. Every generated
+row is labelled `augmented=True` and carries its `archetype`.
+
+Archetypes are assigned per environment, so a machine named `*-test` is never
+given a production database profile — the environment inferred from the name and
+the behaviour in the telemetry always agree.
+
 ## Generated Enterprise Context
 
-Run this command to regenerate all deterministic context files:
+Run these to regenerate all deterministic files, in this order:
 
 ```bash
+python tools/generate_fleet_telemetry.py
 python tools/generate_enterprise_context.py
 python tools/generate_multicloud_demo_data.py
 ```
+
+Inventory SKUs follow the archetype, not the observed utilization: an
+over-provisioned machine is by definition on a large SKU running light, which is
+what makes rightsizing worth doing.
 
 Generated outputs:
 
