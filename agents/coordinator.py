@@ -13,10 +13,15 @@ from datetime import datetime
 from typing import Any
 
 from agents.analyst import FinOpsAnalystAgent
-from agents.core import AgentResult
+from agents.core import AgentResult, infra_lambda_function
 from agents.storage import get_connection, init_db, insert_agent_run
+from ai_finops.analyst import AIFinOpsAnalystAgent
 from events.schemas import (
+    EVENT_AI_COST_ANALYZED,
+    EVENT_AI_RECOMMENDATION_CREATED,
+    EVENT_AI_USAGE_RECEIVED,
     EVENT_FORECAST_COMPLETED,
+    EVENT_LAMBDA_ACTION_CREATED,
     EVENT_PIPELINE_FAILED,
     EVENT_RECOMMENDATION_CREATED,
     EVENT_SERVERLESS_ACTION_CREATED,
@@ -38,6 +43,7 @@ class CoordinatorAgent:
 
     def __init__(self) -> None:
         self.analyst = FinOpsAnalystAgent()
+        self.ai_analyst = AIFinOpsAnalystAgent()
 
     def handle_event(self, event: dict[str, Any]) -> dict[str, Any]:
         event_type = event["event_type"]
@@ -50,6 +56,14 @@ class CoordinatorAgent:
         if event_type == EVENT_PIPELINE_FAILED:
             return self._handle_pipeline_failure(event)
         if event_type == EVENT_SERVERLESS_ACTION_CREATED:
+            return self._handle_serverless_action(event)
+        if event_type == EVENT_AI_USAGE_RECEIVED:
+            return self._handle_ai_usage(event)
+        if event_type == EVENT_AI_COST_ANALYZED:
+            return self._handle_ai_cost(event)
+        if event_type == EVENT_AI_RECOMMENDATION_CREATED:
+            return self._handle_ai_recommendation(event)
+        if event_type == EVENT_LAMBDA_ACTION_CREATED:
             return self._handle_serverless_action(event)
         return self._ignore_event(event)
 
@@ -192,12 +206,7 @@ class CoordinatorAgent:
             insert_agent_run(conn, result)
 
     def _function_name(self, action: str | None) -> str:
-        mapping = {
-            "SCHEDULE_SHUTDOWN": "finops-schedule-shutdown-lambda",
-            "SCALE_DOWN": "finops-scale-down-lambda",
-            "APPLICATION_REVIEW": "finops-application-review-lambda",
-        }
-        return mapping.get(action or "", "finops-review-lambda")
+        return infra_lambda_function(action)
 
     def _response_message(self, payload: dict[str, Any], status: str) -> str:
         if status == "failed":

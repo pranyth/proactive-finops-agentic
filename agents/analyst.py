@@ -11,13 +11,13 @@ structured so it can evolve into LangGraph/LangChain services later.
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from agents import datacache
 from agents.core import AgentAnswer
 
 VM_CSV = Path("data/augmented_vm_metrics.csv")
@@ -45,10 +45,25 @@ PREPARED_QUESTIONS = [
 ]
 
 
+PROFILE_SOURCES = [
+    VM_CSV, DB_CSV, TAGS_JSON, INVENTORY_CSV, COST_CSV,
+    INCIDENTS_CSV, ACTIONS_CSV, PIPELINES_CSV, PROVENANCE_CSV,
+    MULTICLOUD_CSV, OPEN_TRACE_PATTERNS_CSV,
+]
+
+RECOMMENDATION_SOURCES = [
+    VM_CSV, TAGS_JSON, INVENTORY_CSV, COST_CSV,
+    INCIDENTS_CSV, ACTIONS_CSV, MULTICLOUD_CSV,
+]
+
+
 class DatasetProfiler:
     """Identifies the current demo dataset and what it can support."""
 
     def profile(self) -> dict[str, Any]:
+        return datacache.derived("infra_dataset_profile", PROFILE_SOURCES, self._build_profile)
+
+    def _build_profile(self) -> dict[str, Any]:
         vm_df = self._load_csv(VM_CSV, parse_dates=["timestamp"])
         db_df = self._load_csv(DB_CSV, parse_dates=["timestamp"])
         inventory_df = self._load_csv(INVENTORY_CSV)
@@ -144,18 +159,10 @@ class DatasetProfiler:
         }
 
     def _load_csv(self, path: Path, parse_dates: list[str] | None = None) -> pd.DataFrame:
-        if not path.exists():
-            return pd.DataFrame()
-        try:
-            return pd.read_csv(path, parse_dates=parse_dates or [])
-        except ValueError:
-            return pd.read_csv(path)
+        return datacache.load_csv(path, parse_dates)
 
     def _load_tags(self) -> dict[str, dict[str, Any]]:
-        if not TAGS_JSON.exists():
-            return {}
-        with TAGS_JSON.open() as handle:
-            return json.load(handle)
+        return datacache.load_json(TAGS_JSON)
 
     def _source_mix(self, provenance_df: pd.DataFrame) -> dict[str, int]:
         if provenance_df.empty or "source_type" not in provenance_df:
@@ -314,12 +321,7 @@ class FinOpsAnalystAgent:
         return "general_finops"
 
     def _load_csv(self, path: Path, parse_dates: list[str] | None = None) -> pd.DataFrame:
-        if not path.exists():
-            return pd.DataFrame()
-        try:
-            return pd.read_csv(path, parse_dates=parse_dates or [])
-        except ValueError:
-            return pd.read_csv(path)
+        return datacache.load_csv(path, parse_dates)
 
     def _load_vm_metrics(self) -> pd.DataFrame:
         return self._load_csv(VM_CSV, parse_dates=["timestamp"])
@@ -328,10 +330,7 @@ class FinOpsAnalystAgent:
         return self._load_csv(DB_CSV, parse_dates=["timestamp"])
 
     def _load_tags(self) -> dict[str, dict[str, Any]]:
-        if not TAGS_JSON.exists():
-            return {}
-        with TAGS_JSON.open() as handle:
-            return json.load(handle)
+        return datacache.load_json(TAGS_JSON)
 
     def _load_inventory(self) -> pd.DataFrame:
         return self._load_csv(INVENTORY_CSV)
@@ -369,7 +368,17 @@ class FinOpsAnalystAgent:
         return lookup
 
     def _vm_recommendation_frame(self) -> pd.DataFrame:
+        # Callers add and overwrite columns on the result, so hand out a copy of
+        # the cached frame rather than the cached frame itself.
+        frame = datacache.derived(
+            "infra_recommendation_frame", RECOMMENDATION_SOURCES, self._build_recommendation_frame
+        )
+        return frame.copy()
+
+    def _build_recommendation_frame(self) -> pd.DataFrame:
         df = self._load_vm_metrics()
+        if df.empty or "resource_id" not in df:
+            return pd.DataFrame()
         tags = self._load_tags()
         inventory = self._load_inventory()
         cost = self._load_cost()
@@ -533,7 +542,11 @@ class FinOpsAnalystAgent:
                 f"{environment}/{criticality} context; estimated savings ${estimated_savings:,.2f}."
             )
         if avg_cpu < threshold * 0.30 and threshold > 5.0:
-            return f"Recent CPU is far below dynamic threshold {threshold:.1f}%, with business context from {app}."
+            context = f"owned by {app}" if app != "untagged" else "no application tag to check ownership against"
+            return (
+                f"Recent CPU averages {avg_cpu:.1f}%, far below this machine's own "
+                f"dynamic threshold of {threshold:.1f}% ({context})."
+            )
         if avg_cpu > threshold or incidents_seen > 0:
             return f"Recent CPU or incident history indicates risk; threshold {threshold:.1f}%, incidents {incidents_seen}."
         return "Recent utilization is within normal range."
@@ -753,16 +766,40 @@ class FinOpsAnalystAgent:
         )
 
     def _answer_general(self, question: str):
+        """Broad questions ("where can we save money?") get the biggest wins.
+
+        Ranking by savings across every action type is more useful here than
+        defaulting to shutdown candidates, which hides larger rightsizing wins.
+        """
         recs_df = self._vm_recommendation_frame()
-        candidates = recs_df[recs_df["Shutdown Candidate"]].head(5)
+        if recs_df.empty:
+            return (
+                "I could not evaluate the infrastructure estate because VM telemetry is unavailable.",
+                [],
+                {"chart_type": "general_summary", "question": question},
+                ["Dataset Profiler", "Requirement Checker"],
+                "Load VM telemetry before asking infrastructure questions.",
+            )
+        actionable = recs_df[recs_df["Recommended Action"] != "NO_ACTION"]
+        candidates = actionable.sort_values(
+            ["Estimated Savings Monthly USD", "Confidence"], ascending=[False, False]
+        ).head(12)
+        total_savings = float(candidates["Estimated Savings Monthly USD"].sum())
+        fleet_cost = float(recs_df["Estimated Monthly Cost USD"].sum())
         answer = (
-            "I identified the current demo dataset and can answer VM shutdown, scale-down, risk, DB health, "
-            "and data requirement questions. For this general query, I am showing top low-peak candidates with business context."
+            f"Across {len(recs_df)} machines costing about ${fleet_cost:,.2f} per month, I found "
+            f"{len(actionable)} with an available action. The top {len(candidates)} are worth roughly "
+            f"${total_savings:,.2f} per month, led by rightsizing and low-peak shutdowns."
         )
         return (
             answer,
             candidates.to_dict("records"),
-            {"chart_type": "general_summary", "question": question},
+            {
+                "chart_type": "general_summary",
+                "question": question,
+                "fleet_monthly_cost_usd": round(fleet_cost, 2),
+                "estimated_monthly_savings_usd": round(total_savings, 2),
+            },
             ["Dataset Profiler", "Requirement Checker", "Knowledge/Context Tool", "Recommendation Tool"],
-            "Choose one of the prepared demo questions for a sharper answer.",
+            "Review the highest-savings machines with their owners, then approve the safe ones.",
         )

@@ -1,296 +1,129 @@
-# Agentic Proactive FinOps Governance for Multi-Cloud Telemetry
+# Agentic FinOps Governance for Cloud Infrastructure and AI Services
 
-A production-style capstone prototype for multi-cloud telemetry. The main demo is now a **FastAPI-backed, event-driven FinOps Analyst Agent platform**: telemetry/failure events enter an API gateway, a Coordinator Agent routes work through internal tools, and the browser only visualizes returned system state.
+A production-style capstone demo that governs cloud spend across **two domains from one agent**:
 
-## Main Use Case
+- **Infrastructure** — virtual machine CPU, memory, disk and network utilization from CoreStack-derived Azure telemetry plus AWS/GCP telemetry generated from open trace patterns.
+- **AI services** — managed LLM inference cost, tokens, latency and answer quality. Amazon Bedrock is the primary test service; Azure OpenAI and Vertex AI demonstrate a provider-neutral design.
 
-The main user is a FinOps or cloud-ops operator. Their core question is:
+## Main Outcome
 
-> Which multi-cloud VMs can be safely shut down or rightsized, why, what savings/risk does that create, and what serverless action would be triggered?
+You ask one plain-English question. The agent decides which domain owns the answer, and returns
+decisions in a single shape no matter where they came from:
 
-Everything in the demo supports that operator flow: telemetry enters the platform, the Coordinator Agent processes events, the FinOps Analyst Agent explains recommendations, and the dashboard visualizes evidence and audit logs.
+| Question | Routed to | Typical decision |
+|---|---|---|
+| Which VMs can be shut down during low peak hours? | Infrastructure | `SCHEDULE_SHUTDOWN` |
+| Which VMs need scale down / scale up? | Infrastructure | `SCALE_DOWN` / `SCALE_UP` |
+| Which applications are degraded? | Infrastructure | `DB_INVESTIGATION` |
+| Which workloads can use a smaller model? | AI services | `SWITCH_TO_SMALLER_MODEL` |
+| Where are we wasting input or output tokens? | AI services | `ENABLE_PROMPT_CACHING` |
+| Where can we save the most money across the estate? | **Both** | one ranked list |
+
+Every decision carries structured evidence, estimated savings, confidence, business impact, risk and an
+approval-gated Lambda payload. A question that spans both domains returns one list ranked by savings,
+with the per-analyst reasoning shown separately.
 
 ## Quick Start
 
 ```bash
 git clone https://github.com/pranyth/proactive-finops-agentic.git
 cd proactive-finops-agentic
+
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate       # Windows PowerShell: .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python run_demo.py
 ```
 
-Windows PowerShell:
+Open `http://127.0.0.1:8000`. API documentation is at `http://127.0.0.1:8000/docs`.
 
-```powershell
-git clone https://github.com/pranyth/proactive-finops-agentic.git
-cd proactive-finops-agentic
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+The first run creates the normalized synthetic AI dataset automatically. Rebuild it with:
+
+```bash
+python run_demo.py --regenerate
+```
+
+## LLM Configuration
+
+The complete demo works without a cloud key using the evidence-policy fallback. To generate the final explanation with a real LLM, copy `.env.example` to `.env`, load it into your shell, and configure one provider:
+
+```bash
+export FINOPS_LLM_PROVIDER=openai
+export OPENAI_API_KEY=your-key
+export OPENAI_MODEL=gpt-4o-mini
 python run_demo.py
 ```
 
-Open `http://127.0.0.1:8000`. If the port is busy, run `python run_demo.py --port 8010`.
+Anthropic and local Ollama adapters are also supported. Secrets must never be committed.
 
-For a shorter handoff, see `QUICKSTART.md`.
-
-## What This Project Shows
-
-- FastAPI API gateway for the visible FinOps Analyst Agent
-- SQLite-backed event bus with pending/processed/failed event states
-- Coordinator Agent and background worker for event-driven orchestration
-- Non-Streamlit web command center served by the API
-- One visible FinOps Analyst Agent entry point
-- Dataset profiling and data requirement checks
-- Multi-cloud telemetry analysis across Azure, AWS, and GCP demo providers
-- CoreStack-derived Azure telemetry as the first real provider source
-- Open-source workload trace pattern references for AWS/GCP synthetic telemetry
-- Synthetic/augmented CPU, memory, disk, network, and DB metrics
-- Hybrid enterprise context for inventory, cost, incidents, actions, and pipelines
-- Data provenance labels for paper-safe reporting
-- Dynamic threshold and Random Forest based forecasting support
-- Application and database health correlation
-- SQLite-backed operational audit trail
-- Simulated Lambda/serverless action logs
-
-## How The Platform Runs
+## Architecture
 
 ```text
-Telemetry/Event API
-        ->
-SQLite Event Bus
-        ->
-Coordinator Agent + Background Worker
-        ->
-Internal Tools
-  - Dataset Profiler
-  - Requirement Checker
-  - Recommendation Tool
-  - Low-Peak Shutdown Tool
-  - Risk Ranking Tool
-  - App/DB Health Tool
-  - Serverless Action Router
-        ->
-Stored events + recommendations + action logs
-        ->
-Browser visualizes state
-
-Direct user questions still use:
-
-Browser Command Center -> FastAPI /api/query -> FinOps Analyst Agent -> Answer
+VM utilization telemetry ─┐
+                          ├─> FastAPI gateway -> persisted event bus -> coordinator
+Bedrock / AI usage metrics┘                                                  │
+                                                                             v
+                                          ┌──────────── domain router ───────────┐
+                                          │                                      │
+                             infrastructure analyst                    AI service analyst
+                        (CPU / memory / disk / network,            (tokens, model tier,
+                         cost, incidents, policy)                   quality, caching)
+                                          │                                      │
+                                          └─────> normalized decision <──────────┘
+                                                          │
+                                       optional LLM explanation -> evidence-backed
+                                       recommendation -> approval-gated Lambda payload
 ```
 
-Data ingestion and synthetic data generation are treated as **data pipelines/tools**, not as the main user-facing agent. The Streamlit screens remain as backup dashboards, but the primary demo path is API-first.
+Both analysts emit the same `Decision` contract (`agents/unified.py`), which is why one console can
+render a VM shutdown and a model switch as the same kind of card. AWS Lambda is the execution
+mechanism for an approved shutdown, resize, model, cache or tier change.
 
-## Repository Contents
+## Console
 
-```text
-api/main.py                 # FastAPI API gateway, event endpoints, and coordinator worker startup
-frontend/                   # Non-Streamlit command center with agent query, event stream, and audit views
-agentic_command_center.py   # Legacy Streamlit command center fallback
-agents/analyst.py           # FinOpsAnalystAgent, DatasetProfiler, RequirementChecker
-agents/                     # Shared contracts, storage, and operational audit bootstrap
-dashboard.py                # Legacy VM forecasting Streamlit dashboard
-DbDashboard.py              # Legacy application/DB Streamlit dashboard
-ingestion/                  # Provider-neutral telemetry schema and CoreStack/AWS/Azure/GCP adapters
-tools/                      # Data extraction, augmentation, context generation, multi-cloud data generation
-docs/DATA_STRATEGY.md       # Paper-safe data strategy, provenance, and limitations
-docs/MULTICLOUD_ARCHITECTURE.md # Provider-neutral schema and adapter architecture
-data/                       # Checked-in demo datasets needed to run dashboards
-requirements.txt            # Python dependencies
-```
+Four views, all driven by the same API:
 
-## Data Included
+- **Ask** — free-text question, auto-detected domain (or pin one), estate KPIs, ranked decisions, evidence drawer.
+- **Infrastructure** — utilization meters for all four signals, CPU-band distribution, cost by provider and environment, per-machine CPU/memory/disk/network history.
+- **AI services** — spend by provider, cost by deployment, token/quality/latency evidence table.
+- **Activity** — event bus, coordinator audit trail, Lambda payloads proposed.
 
-The repo includes processed demo data:
+## Production Vision
 
-```text
-data/augmented_vm_metrics.csv
-data/db_metrics.csv
-data/vm_tags.json
-data/vm_inventory.csv
-data/cost_metrics.csv
-data/incident_history.csv
-data/action_history.csv
-data/pipeline_runs.csv
-data/data_provenance.csv
-data/open_trace_patterns.csv
-data/multicloud_vm_metrics.csv
-```
+See [docs/FINAL_PROJECT_VISION.md](docs/FINAL_PROJECT_VISION.md) for the target LangGraph/LangChain architecture, autonomous agent responsibilities, production AWS Lambda workflow, migration boundary and resume-ready project description.
 
-These files are enough to run the project demo. You do not need the raw `corestack_data/` BSON exports unless you want to regenerate the pipeline from the original CoreStack data.
+## Data
 
-For paper/demo wording, use:
+CoreStack did not supply AI-service billing data. The project therefore generates a reproducible 30-day AI workload using:
 
-> The prototype evaluates an agentic FinOps workflow using CoreStack-derived Azure telemetry, deterministic synthetic enterprise context, and AWS/GCP telemetry generated from cited open-source cloud workload trace patterns.
+- existing CoreStack-derived enterprise context;
+- Microsoft Azure public LLM inference trace patterns;
+- Amazon Bedrock CloudWatch metric definitions;
+- explicit synthetic scenarios generated with seed `42`.
 
-More details are in `docs/DATA_STRATEGY.md`.
+The data is stored in normalized SQLite tables rather than one flat CSV. See [docs/AI_FINOPS_DATASET.md](docs/AI_FINOPS_DATASET.md) for provenance and paper-use rules.
 
-## Clone and Run
+## Important API Endpoints
 
-### 1. Clone the repo
+- `POST /api/query` — natural-language question across both domains. Optional `domain` of `auto` (default), `infrastructure`, `ai_services` or `all`
+- `GET /api/overview` — merged estate KPIs: infrastructure and AI services side by side
+- `GET /api/infra/summary` — fleet utilization, CPU bands, provider/environment cost, top spenders
+- `GET /api/infra/resource/{id}` — hourly CPU, memory, disk and network for one machine
+- `GET /api/ai-finops/summary` — cost, token, provider and recommendation summary
+- `GET /api/suggestions` — the example questions the console offers
+- `POST /api/demo-run` — push one telemetry event and one AI usage event through the coordinator
+- `GET /api/events` — persisted event stream
+- `GET /api/architecture` — runtime architecture
+
+## Tests
 
 ```bash
-git clone https://github.com/pranyth/proactive-finops-agentic.git
-cd proactive-finops-agentic
+python -m unittest discover -s tests
 ```
 
-### 2. Create and activate a virtual environment
+Covers domain routing, the shared decision contract across both analysts, the merged overview
+totals, fleet reads and the event paths.
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+## Current Safety Boundary
 
-On Windows PowerShell, use:
-
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Run the API-backed command center
-
-```bash
-python run_demo.py
-```
-
-For development reload mode, use:
-
-```bash
-python run_demo.py --reload
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000
-```
-
-API docs:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-The command center shows:
-
-- Event-driven orchestration panel with Coordinator Agent status
-- Event stream for telemetry, forecast, recommendation, pipeline failure, and serverless action events
-
-- Ask-the-agent question panel
-- FastAPI health and API-backed query execution
-- Dataset identification
-- Data requirement checklist
-- Final answer and next action
-- Recommendation/evidence table with cost, criticality, approval, incidents, and savings
-- Hybrid data profile and source mix
-- Architecture showing telemetry events -> event bus -> coordinator -> internal tools -> stored results
-- Operational audit trail below the main agent answer
-
-Prepared demo questions:
-
-- Which VMs can be shut down during low peak hours?
-- Which VMs need scale down?
-- Which VMs are risky?
-- Which applications are degraded?
-- Is DB data required for this question?
-- Why is this VM recommended?
-
-## Useful API Endpoints
-
-```text
-GET  /api/health
-GET  /api/questions
-GET  /api/dataset-profile
-POST /api/query
-GET  /api/architecture
-GET  /api/events
-POST /api/events/telemetry
-POST /api/events/pipeline-failure
-POST /api/events/demo-run
-GET  /api/operational/summary
-GET  /api/operational/audit
-POST /api/operational/refresh
-```
-
-Example query:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/query \
-  -H "Content-Type: application/json" \
-  -d '{"question":"Which VMs can be shut down during low peak hours?","time_window":"latest_48h","cloud":"azure"}'
-```
-
-## Optional Legacy Streamlit Dashboards
-
-The project still includes Streamlit dashboards as fallback views.
-
-```bash
-streamlit run agentic_command_center.py --server.port 8506
-streamlit run dashboard.py --server.port 8501
-streamlit run DbDashboard.py --server.port 8502
-```
-
-Use the FastAPI command center as the main Vijay demo because it better matches a production platform architecture.
-
-## Regenerate Hybrid Context
-
-The checked-in data already works. To regenerate deterministic enterprise context from the current VM telemetry and tags:
-
-```bash
-python tools/generate_enterprise_context.py
-python tools/generate_multicloud_demo_data.py
-```
-
-This creates inventory, cost, incident, action, pipeline, multi-cloud telemetry, open-trace pattern, and provenance datasets. It does not require raw CoreStack BSON.
-
-## Recommended Vijay Demo Order
-
-1. Run `python run_demo.py`.
-2. Open `http://127.0.0.1:8000`.
-3. Show the architecture: event API, SQLite Event Bus, Coordinator Agent, internal tools, hybrid knowledge context, and stored results.
-4. Click **Run Event Demo** and show `telemetry.received -> forecast.completed -> recommendation.created -> serverless.action.created`.
-5. Show Coordinator State and Event Stream.
-6. Ask: "Which VMs can be shut down during low peak hours?"
-7. Show dataset profile, requirement check, answer, recommendations, savings, and evidence.
-8. Show the source mix/provenance section for paper-safe claims.
-9. Ask: "Which applications are degraded?"
-10. Open `http://127.0.0.1:8000/docs` to show the API contract.
-11. Show the operational audit trail only after the main agent answer.
-
-## Where AI Comes In
-
-- **ML AI:** dynamic thresholds and Random Forest forecasting in the VM dashboard.
-- **Agentic AI:** dataset understanding, requirement checking, tool selection, and natural-language explanation.
-- **Synthetic AI data:** generated memory, disk, network, DB, cost, incident, action, and pipeline data used to test workflows.
-- **Open-source trace grounding:** public cloud trace research informs workload/failure patterns for synthetic context; raw trace rows are not copied into the project.
-
-## Optional: Regenerate From Raw CoreStack Data
-
-Only do this if you have the raw CoreStack BSON files in `corestack_data/`.
-
-```bash
-python tools/extract_vm_metrics.py
-python tools/augment_metrics.py
-python tools/extract_app_tags.py
-python tools/generate_db_metrics.py
-python tools/generate_enterprise_context.py
-python tools/generate_multicloud_demo_data.py
-```
-
-For normal clone-and-run demos, this step is not required.
-
-## Project Theme
-
-**Agentic Proactive FinOps Governance for Multi-Cloud Telemetry**
-
-A command center where the browser visualizes an API-backed multi-cloud FinOps Analyst Agent that identifies current data, checks what is required, answers operational questions, recommends cost/risk actions, and shows evidence for every recommendation.
+Lambda execution is simulated and logged. The demo never changes a real cloud service. Production changes require credentials, policy controls, approval workflow and provider-specific adapters.

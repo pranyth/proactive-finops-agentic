@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 
-from agents.coordinator import CoordinatorAgent
+from ai_finops.coordinator import CoordinatorAgent
 from events.store import claim_next_event, mark_event, update_coordinator_state
 
 
