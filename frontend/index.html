@@ -3,202 +3,293 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FinOps Decision Console</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=8" />
+    <title>FinOps Copilot</title>
+    <link rel="stylesheet" href="/assets/styles.css?v=20" />
   </head>
   <body>
-    <div class="shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">AF</div>
-          <div>
-            <div class="brand-title">Agentic FinOps</div>
-            <div class="brand-subtitle">Multi-cloud decisions</div>
-          </div>
-        </div>
-        <nav class="nav">
-          <a href="#ask" class="active">Ask</a>
-          <a href="#decision">Decision</a>
-          <a href="#selected-decision">Why + Action</a>
-          <a href="#requirements">Data Check</a>
-          <a href="#operations">Operations</a>
-        </nav>
-        <div class="status-box">
-          <span class="status-dot"></span>
-          <span id="api-status">Checking API</span>
-        </div>
-      </aside>
+    <a class="skip-link" href="#main">Skip to content</a>
 
-      <main class="workspace">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">Agentic Proactive FinOps Governance</p>
-            <h1>FinOps Decision Console</h1>
-            <p>Ask one operational question. The agent returns safe shutdown or rightsizing decisions with evidence, risk, savings, and action payload.</p>
-          </div>
-          <div class="topbar-actions">
-            <button id="run-event-demo" class="ghost-button">Run Event Demo</button>
-            <button id="refresh-demo" class="ghost-button">Refresh Audit</button>
-            <a class="ghost-button" href="/docs" target="_blank" rel="noreferrer">API Docs</a>
-          </div>
-        </header>
+    <header class="appbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span class="brand-text"><strong>FinOps Copilot</strong><small>Cloud infrastructure + AI services</small></span>
+      </div>
 
-        <section class="metric-grid" id="summary-metrics">
-          <div class="metric"><span>Providers</span><strong id="metric-vms">-</strong></div>
-          <div class="metric"><span>Telemetry Rows</span><strong id="metric-vm-rows">-</strong></div>
-          <div class="metric"><span>Recommendations</span><strong id="metric-recommendations">-</strong></div>
-          <div class="metric"><span>Monthly Savings</span><strong id="metric-savings">-</strong></div>
-          <div class="metric"><span>Pipeline Runs</span><strong id="metric-pipelines">-</strong></div>
-          <div class="metric"><span>Actions</span><strong id="metric-actions">-</strong></div>
+      <nav class="viewnav" aria-label="Sections">
+        <button class="viewtab is-active" data-view="ask" aria-current="page">Ask</button>
+        <button class="viewtab" data-view="infrastructure">Infrastructure</button>
+        <button class="viewtab" data-view="ai">AI services</button>
+        <button class="viewtab" data-view="activity">Activity</button>
+      </nav>
+
+      <div class="appbar-actions">
+        <span id="reasoning-mode" class="pill" title="How the final explanation is generated">Checking…</span>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch theme" title="Switch theme">◐</button>
+        <a class="ghost-button" href="/docs" target="_blank" rel="noreferrer">API</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ══ ASK ══ -->
+      <section class="view is-active" data-view="ask">
+        <div class="kpi-row" id="estate-kpis"></div>
+
+        <section class="ask" aria-labelledby="ask-title">
+          <h1 id="ask-title">What do you want to know about your cloud spend?</h1>
+          <p class="ask-sub">Ask in plain English. The agent decides whether the answer lives in your
+            virtual machines, your AI services, or both — then shows the evidence behind every proposal.</p>
+
+          <form class="ask-form" id="ask-form">
+            <label class="sr-only" for="question">Your question</label>
+            <input id="question" name="question" autocomplete="off" spellcheck="false"
+                   placeholder="e.g. which machines are sitting idle and what would shutting them down save?" />
+            <label class="sr-only" for="domain">Scope</label>
+            <select id="domain" name="domain" title="Limit the search to one domain">
+              <option value="auto">Auto-detect</option>
+              <option value="infrastructure">Infrastructure only</option>
+              <option value="ai_services">AI services only</option>
+              <option value="all">Both domains</option>
+            </select>
+            <button class="primary-button" id="ask-button" type="submit">Analyze</button>
+          </form>
+
+          <div class="chips" id="suggestions" role="group" aria-label="Example questions"></div>
+          <p class="status" id="status" role="status" aria-live="polite">Ready.</p>
         </section>
 
-        <section id="usecase" class="usecase-band">
-          <div>
-            <span>Main use case</span>
-            <strong>Which VMs can be shut down or rightsized safely?</strong>
-          </div>
-          <div>
-            <span>Decision evidence</span>
-            <strong>Provider, utilization, cost, tags, criticality, incidents</strong>
-          </div>
-          <div>
-            <span>Final outcome</span>
-            <strong>Explainable recommendation + serverless action payload</strong>
-          </div>
-        </section>
-
-        <section id="ask" class="panel ask-panel">
-          <div class="panel-heading">
+        <section class="answer-card" id="answer-card" hidden aria-labelledby="answer-title">
+          <div class="answer-head">
             <div>
-              <h2>Ask The FinOps Agent</h2>
-              <p>The UI only asks and visualizes. The answer comes from the FastAPI-backed analyst agent.</p>
+              <span class="badge" id="answer-domain">—</span>
+              <span class="badge subtle" id="answer-routing">—</span>
             </div>
-            <span class="pill">/api/query</span>
-          </div>
-          <div class="query-grid">
-            <label class="question-field">
-              Ask a question
-              <input id="custom-question" value="Which VMs can be shut down during low peak hours?" placeholder="Ask about shutdowns, scale down, risky VMs, degraded apps, or failed pipelines" />
-            </label>
-            <label>
-              Time window
-              <select id="time-window">
-                <option value="latest_48h">latest_48h</option>
-                <option value="latest_7d">latest_7d</option>
-                <option value="full_dataset">full_dataset</option>
-              </select>
-            </label>
-            <button id="run-agent" class="primary-button">Run Agent</button>
-          </div>
-          <div id="run-status" class="run-status">Type a question and run the agent.</div>
-        </section>
-
-        <section id="decision" class="decision-layout">
-          <div id="agent-output" class="panel response-panel">
-            <div class="panel-heading compact">
-              <h2>Agent Answer</h2>
-              <span id="intent-pill" class="pill muted">intent</span>
+            <div class="answer-savings">
+              <small>Savings identified</small>
+              <strong id="answer-savings">$0</strong>
             </div>
-            <p id="answer-text" class="answer-text">Run the agent to see the response.</p>
-            <div class="next-action"><span>Next action</span><strong id="next-action">-</strong></div>
-            <div id="tools-used" class="tool-list"></div>
           </div>
-
-          <div class="panel decision-panel">
-            <div class="panel-heading compact">
-              <h2>Top Decisions</h2>
-              <span class="pill muted">click a VM</span>
+          <h2 id="answer-title" class="sr-only">Agent answer</h2>
+          <p class="answer-text" id="answer-text"></p>
+          <div class="route-breakdown" id="route-breakdown"></div>
+          <div class="answer-foot">
+            <div class="next-step">
+              <small>Next safe step</small>
+              <span id="next-action">—</span>
             </div>
-            <div id="recommendation-cards" class="recommendation-cards empty-state">No recommendations yet.</div>
-          </div>
-        </section>
-
-        <section id="selected-decision" class="panel selected-panel">
-          <div class="panel-heading compact">
-            <h2>Selected VM: Why + Action</h2>
-            <span id="selected-action-pill" class="pill muted">no selection</span>
-          </div>
-          <div id="selected-summary" class="selected-summary empty-state">Select a recommendation to see the evidence and action payload.</div>
-          <div id="selected-detail-grid" class="detail-grid"></div>
-          <div class="payload-wrap">
-            <div class="payload-heading">
-              <span>Serverless action payload</span>
-              <strong id="payload-function">-</strong>
-            </div>
-            <pre id="action-payload">{}</pre>
-          </div>
-        </section>
-
-        <section id="requirements" class="panel">
-          <div class="panel-heading compact">
-            <h2>Data Requirement Check</h2>
-            <span class="pill muted">required or not</span>
-          </div>
-          <div id="requirement-list" class="requirement-list"></div>
-        </section>
-
-        <section class="secondary-stack" id="operations">
-          <details class="panel secondary-panel">
-            <summary>Operational Proof: Event-Driven Orchestration</summary>
-            <p class="secondary-note">Use this when Vijay asks how agents are running in the background.</p>
-            <div class="event-layout">
-              <div>
-                <div class="event-flow" id="event-flow"></div>
-                <div id="event-summary" class="evidence-strip event-summary"></div>
+            <details class="trace">
+              <summary id="trace-summary">How this was worked out</summary>
+              <div class="trace-body">
+                <div><h4>Tools used</h4><div class="taglist" id="tools"></div></div>
+                <div><h4>Data the answer needed</h4><div class="reqs" id="requirements"></div></div>
               </div>
-              <div class="coordinator-card">
-                <span>Coordinator State</span>
-                <strong id="coordinator-status">-</strong>
-                <p id="coordinator-decision">Waiting for events</p>
-                <dl>
-                  <div><dt>Last event</dt><dd id="coordinator-last-event">-</dd></div>
-                  <div><dt>Processed</dt><dd id="coordinator-processed">-</dd></div>
-                  <div><dt>Failed</dt><dd id="coordinator-failed">-</dd></div>
-                </dl>
-              </div>
-            </div>
-            <div class="table-wrap event-table-wrap">
-              <table id="events-table"></table>
-            </div>
-          </details>
-
-          <details class="panel secondary-panel">
-            <summary>Full Recommendations + Evidence</summary>
-            <div id="evidence-strip" class="evidence-strip"></div>
-            <div class="table-wrap">
-              <table id="recommendations-table"></table>
-            </div>
-          </details>
-
-          <details class="panel secondary-panel">
-            <summary>Dataset Profile + Provenance</summary>
-            <div id="profile-grid" class="profile-grid"></div>
-            <div id="source-mix" class="source-mix"></div>
-          </details>
-
-          <details class="panel secondary-panel">
-            <summary>Architecture</summary>
-            <div class="flow" id="architecture-flow"></div>
-            <div class="component-grid" id="component-grid"></div>
-          </details>
-
-          <details class="panel secondary-panel">
-            <summary>Operational Audit Trail</summary>
-            <div class="audit-tabs">
-              <button class="tab active" data-tab="agent_runs">Agent Runs</button>
-              <button class="tab" data-tab="events">Events</button>
-              <button class="tab" data-tab="pipeline_runs">Pipeline Runs</button>
-              <button class="tab" data-tab="serverless_actions">Serverless Logs</button>
-              <button class="tab" data-tab="storage">Storage</button>
-            </div>
-            <div class="table-wrap">
-              <table id="audit-table"></table>
-            </div>
-          </details>
+            </details>
+          </div>
         </section>
-      </main>
-    </div>
 
-    <script src="/assets/app.js?v=8" defer></script>
+        <section class="decisions" id="decisions-section" hidden aria-labelledby="decisions-title">
+          <div class="section-head">
+            <h2 id="decisions-title">Proposed decisions</h2>
+            <div class="filters" id="decision-filters" role="group" aria-label="Filter decisions by domain"></div>
+          </div>
+          <div class="decision-list" id="decision-list"></div>
+        </section>
+      </section>
+
+      <!-- ══ INFRASTRUCTURE ══ -->
+      <section class="view" data-view="infrastructure">
+        <div class="section-head">
+          <div>
+            <h2>Infrastructure estate</h2>
+            <p class="section-sub">Utilization, cost and rightsizing headroom across every virtual machine.</p>
+          </div>
+          <span class="pill" id="infra-scope">—</span>
+        </div>
+
+        <div class="kpi-row" id="infra-kpis"></div>
+
+        <div class="chart-grid">
+          <figure class="card span-2">
+            <figcaption>
+              <h3>Average utilization across the fleet</h3>
+              <p>Where headroom is sitting. Each meter is one signal, measured over the full telemetry window.</p>
+            </figcaption>
+            <div class="meters" id="utilization-meters"></div>
+          </figure>
+
+          <figure class="card">
+            <figcaption>
+              <h3>Machines by CPU band</h3>
+              <p>How busy the estate actually is.</p>
+            </figcaption>
+            <div id="cpu-band-chart"></div>
+          </figure>
+
+          <figure class="card">
+            <figcaption>
+              <h3>Monthly cost by provider</h3>
+              <p>Where infrastructure spend lands.</p>
+            </figcaption>
+            <div id="provider-chart"></div>
+          </figure>
+
+          <figure class="card">
+            <figcaption>
+              <h3>Recommended actions</h3>
+              <p>What the agent proposes across the fleet.</p>
+            </figcaption>
+            <div id="action-chart"></div>
+          </figure>
+
+          <figure class="card">
+            <figcaption>
+              <h3>Spend by environment</h3>
+              <p>Non-production spend is usually the safest to cut.</p>
+            </figcaption>
+            <div id="environment-chart"></div>
+          </figure>
+        </div>
+
+        <section class="card">
+          <div class="section-head compact">
+            <div>
+              <h3>Inspect a machine</h3>
+              <p class="section-sub">Seven days of hourly CPU, memory, disk and network for one resource.</p>
+            </div>
+            <label class="sr-only" for="resource-picker">Resource</label>
+            <select id="resource-picker"></select>
+          </div>
+          <div id="resource-detail" class="resource-detail"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-head compact"><h3>Most expensive machines</h3></div>
+          <div class="table-scroll">
+            <table class="data-table" id="top-resources">
+              <thead><tr>
+                <th scope="col">Resource</th><th scope="col">Application</th><th scope="col">Provider</th>
+                <th scope="col">Environment</th><th scope="col" class="num">Avg CPU</th>
+                <th scope="col" class="num">Monthly cost</th><th scope="col" class="num">Savings</th>
+                <th scope="col">Proposed action</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- ══ AI SERVICES ══ -->
+      <section class="view" data-view="ai">
+        <div class="section-head">
+          <div>
+            <h2>Managed AI services</h2>
+            <p class="section-sub">Token, cost, latency and quality evidence for every LLM deployment.</p>
+          </div>
+          <span class="pill" id="ai-scope">—</span>
+        </div>
+
+        <div class="kpi-row" id="ai-kpis"></div>
+
+        <div class="chart-grid">
+          <figure class="card">
+            <figcaption>
+              <h3>Monthly cost by provider</h3>
+              <p>Inference spend across the three managed services.</p>
+            </figcaption>
+            <div id="ai-provider-chart"></div>
+          </figure>
+          <figure class="card">
+            <figcaption>
+              <h3>Most expensive deployments</h3>
+              <p>Cost concentration across the ten deployments.</p>
+            </figcaption>
+            <div id="ai-deployment-chart"></div>
+          </figure>
+        </div>
+
+        <section class="card">
+          <div class="section-head compact"><h3>Deployment evidence</h3></div>
+          <div class="table-scroll">
+            <table class="data-table" id="ai-deployments">
+              <thead><tr>
+                <th scope="col">Deployment</th><th scope="col">Application</th><th scope="col">Model</th>
+                <th scope="col" class="num">Requests</th><th scope="col" class="num">Monthly cost</th>
+                <th scope="col" class="num">Quality</th><th scope="col" class="num">P95 latency</th>
+                <th scope="col">Criticality</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- ══ ACTIVITY ══ -->
+      <section class="view" data-view="activity">
+        <div class="section-head">
+          <div>
+            <h2>Platform activity</h2>
+            <p class="section-sub">The event bus, the coordinator and the audit trail behind every decision.</p>
+          </div>
+          <button id="run-events" class="ghost-button" type="button">Run a telemetry event</button>
+        </div>
+
+        <div class="kpi-row" id="activity-kpis"></div>
+
+        <div class="chart-grid">
+          <figure class="card span-2">
+            <figcaption><h3>How a question becomes an action</h3></figcaption>
+            <ol class="flow" id="flow"></ol>
+          </figure>
+        </div>
+
+        <section class="card">
+          <div class="section-head compact"><h3>Recent events</h3></div>
+          <div class="table-scroll">
+            <table class="data-table" id="event-table">
+              <thead><tr>
+                <th scope="col">Time</th><th scope="col">Event</th>
+                <th scope="col">Status</th><th scope="col">Result</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <!-- Decision detail drawer -->
+    <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+    <aside class="drawer" id="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <header class="drawer-head">
+        <div>
+          <span class="badge" id="drawer-action">—</span>
+          <h2 id="drawer-title">—</h2>
+          <p id="drawer-sub">—</p>
+        </div>
+        <button class="icon-button" id="drawer-close" type="button" aria-label="Close">✕</button>
+      </header>
+      <div class="drawer-body">
+        <div class="drawer-headline">
+          <div><small>Estimated monthly saving</small><strong id="drawer-savings">—</strong></div>
+          <div><small>Confidence</small><strong id="drawer-confidence">—</strong></div>
+          <div><small>Risk</small><strong id="drawer-risk">—</strong></div>
+        </div>
+
+        <section><h3>Why the agent proposed this</h3><p id="drawer-reason">—</p></section>
+        <section><h3>Evidence</h3><div class="metric-grid" id="drawer-metrics"></div></section>
+        <section><h3>Business guardrail</h3><p id="drawer-impact">—</p></section>
+        <section>
+          <h3>What would run on approval</h3>
+          <div class="lambda-head">
+            <code id="drawer-lambda">—</code>
+            <button class="ghost-button small" id="copy-payload" type="button">Copy payload</button>
+          </div>
+          <pre id="drawer-payload">{}</pre>
+          <p class="safety-note">Approval-gated and simulated. This demo never changes a real cloud resource.</p>
+        </section>
+      </div>
+    </aside>
+
+    <div class="tooltip" id="tooltip" hidden aria-hidden="true"></div>
+    <script src="/assets/app.js?v=20" defer></script>
   </body>
 </html>

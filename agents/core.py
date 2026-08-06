@@ -42,6 +42,58 @@ class AgentAnswer:
         return asdict(self)
 
 
+# Every action the platform can propose, in both domains. `label` is what the
+# console shows a human; `tone` maps onto the status palette (good / warning /
+# serious / critical) so an action never depends on colour alone to be read.
+ACTION_CATALOG: dict[str, dict[str, str]] = {
+    # Infrastructure
+    "SCHEDULE_SHUTDOWN": {"label": "Schedule shutdown", "tone": "good", "domain": "infrastructure"},
+    "SCALE_DOWN": {"label": "Scale down", "tone": "good", "domain": "infrastructure"},
+    "SCALE_UP": {"label": "Scale up", "tone": "warning", "domain": "infrastructure"},
+    "MOVE_TO_SMALLER_SKU": {"label": "Move to smaller SKU", "tone": "good", "domain": "infrastructure"},
+    "APPLICATION_REVIEW": {"label": "Application review", "tone": "serious", "domain": "infrastructure"},
+    "DB_INVESTIGATION": {"label": "Database investigation", "tone": "serious", "domain": "infrastructure"},
+    "KEEP_RUNNING": {"label": "Keep running", "tone": "neutral", "domain": "infrastructure"},
+    # AI services
+    "SWITCH_TO_SMALLER_MODEL": {"label": "Switch to smaller model", "tone": "good", "domain": "ai_services"},
+    "ENABLE_PROMPT_CACHING": {"label": "Enable prompt caching", "tone": "good", "domain": "ai_services"},
+    "REDUCE_OUTPUT_TOKENS": {"label": "Reduce output tokens", "tone": "good", "domain": "ai_services"},
+    "BATCH_REQUESTS": {"label": "Batch requests", "tone": "good", "domain": "ai_services"},
+    "MOVE_TO_PAY_PER_USE": {"label": "Move to pay-per-use", "tone": "good", "domain": "ai_services"},
+    "CHANGE_SERVICE_TIER": {"label": "Change service tier", "tone": "good", "domain": "ai_services"},
+    "SHUTDOWN_UNUSED_DEPLOYMENT": {"label": "Shut down unused deployment", "tone": "good", "domain": "ai_services"},
+    # Shared
+    "PIPELINE_INVESTIGATION": {"label": "Pipeline investigation", "tone": "serious", "domain": "platform"},
+    "COST_ANOMALY": {"label": "Cost anomaly", "tone": "critical", "domain": "platform"},
+    "NO_ACTION": {"label": "No action", "tone": "neutral", "domain": "platform"},
+}
+
+INFRA_LAMBDA_FUNCTIONS = {
+    "SCHEDULE_SHUTDOWN": "finops-schedule-shutdown-lambda",
+    "SCALE_DOWN": "finops-scale-down-lambda",
+    "SCALE_UP": "finops-scale-up-lambda",
+    "MOVE_TO_SMALLER_SKU": "finops-resize-sku-lambda",
+    "APPLICATION_REVIEW": "finops-application-review-lambda",
+    "DB_INVESTIGATION": "finops-db-investigation-lambda",
+    "KEEP_RUNNING": "finops-no-op-lambda",
+}
+
+
+def action_label(action: str | None) -> str:
+    entry = ACTION_CATALOG.get(action or "")
+    if entry:
+        return entry["label"]
+    return (action or "NO_ACTION").replace("_", " ").capitalize()
+
+
+def action_tone(action: str | None) -> str:
+    return ACTION_CATALOG.get(action or "", {}).get("tone", "neutral")
+
+
+def infra_lambda_function(action: str | None) -> str:
+    return INFRA_LAMBDA_FUNCTIONS.get(action or "", "finops-review-lambda")
+
+
 AGENT_CATALOG = [
     {
         "component": "SQLite Event Bus",

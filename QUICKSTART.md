@@ -1,75 +1,43 @@
-# Quickstart
-
-This is the fastest way for a friend or evaluator to run the demo locally.
-
-## Main Use Case
-
-A FinOps or cloud-ops operator asks:
-
-> Which multi-cloud VMs can be safely shut down or rightsized, why, what is the business risk, and what serverless action would be triggered?
-
-The dashboard then shows the recommendation, evidence, data requirements, provider/source profile, event trail, and action log.
-
-## Clone
+# Quick Start
 
 ```bash
 git clone https://github.com/pranyth/proactive-finops-agentic.git
 cd proactive-finops-agentic
-```
-
-## macOS/Linux/WSL Setup
-
-```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python run_demo.py
 ```
 
-Or use the setup script:
+Open http://127.0.0.1:8000.
 
-```bash
-bash scripts/setup.sh
-python run_demo.py
-```
-
-## Windows PowerShell Setup
+Windows PowerShell activation:
 
 ```powershell
-python -m venv venv
 .\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
 python run_demo.py
 ```
 
-Or use the setup script:
+Use `python run_demo.py --regenerate` to rebuild the deterministic AI-service dataset.
 
-```powershell
-.\scripts\setup.ps1
-python run_demo.py
-```
+## Try it
 
-## Open The Demo
+Ask these in the **Ask** box to see each routing path:
 
-```text
-http://127.0.0.1:8000
-```
+| Question | Goes to |
+|---|---|
+| `Which VMs can be shut down during low peak hours?` | Infrastructure |
+| `Which VMs need scale up?` | Infrastructure |
+| `Which applications are degraded?` | Infrastructure |
+| `Which workloads can use a smaller model?` | AI services |
+| `Where are we wasting input or output tokens?` | AI services |
+| `Where can we save the most money across the estate?` | Both, in one ranked list |
 
-If port 8000 is busy:
+Click any decision to open its evidence and the Lambda payload that would run on approval.
+The **Infrastructure** tab has the CPU / memory / disk / network history per machine.
+
+## Tests
 
 ```bash
-python run_demo.py --port 8010
+python -m unittest discover -s tests
 ```
-
-## Vijay Demo Flow
-
-1. Show the top Main Use Case panel.
-2. Click **Run Event Demo** to show telemetry events flowing through the Coordinator Agent.
-3. Ask **Which VMs can be shut down during low peak hours?**
-4. Show recommendations, evidence, savings, risk, provider profile, and action trail.
-5. Ask **Which applications are degraded?** to show when DB/application data becomes required.
-6. Open `/docs` to show the API contract.
-
-## Raw CoreStack Data
-
-Raw `corestack_data/` files are not required for the normal demo. The checked-in processed and synthetic datasets are enough for clone-and-run evaluation.
