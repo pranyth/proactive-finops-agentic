@@ -17,8 +17,14 @@ from typing import Any
 # cached, and one hard failure parks the provider for a cooldown so the console
 # degrades immediately instead of stalling on every question.
 STATUS_TTL_SECONDS = 60.0
-FAILURE_COOLDOWN_SECONDS = 300.0
-SUBPROCESS_TIMEOUT_SECONDS = 25
+# Short enough that one slow generation does not lock the console out for the
+# rest of a demo; long enough to stop a dead endpoint being retried per request.
+FAILURE_COOLDOWN_SECONDS = 120.0
+# The console fetches decisions first and only then asks for the written
+# summary, so this timeout is paid in the background and can afford to be
+# generous. A local 3B model behind the WSL->Windows bridge is usually 7-15s
+# but a cold model load pushes well past that.
+SUBPROCESS_TIMEOUT_SECONDS = 90
 
 _lock = threading.Lock()
 _status_cache: tuple[float, dict[str, str]] | None = None
@@ -182,7 +188,7 @@ class LLMReasoner:
         )
         data = json.loads(result.stdout)
         return data["message"]["content"]
-    def _request(self, url: str, payload: dict[str, Any], headers: dict[str, str], timeout: int = 25) -> dict[str, Any]:
+    def _request(self, url: str, payload: dict[str, Any], headers: dict[str, str], timeout: int = SUBPROCESS_TIMEOUT_SECONDS) -> dict[str, Any]:
         request = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
