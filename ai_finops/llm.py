@@ -49,10 +49,15 @@ def reset_llm_state() -> None:
         _status_cache = None
 
 
+# Kept deliberately short. The console renders this as a single lead paragraph
+# above the decision cards, which already carry the per-item numbers, so a long
+# answer duplicates the table and — on CPU inference — doubles the wait.
 SYSTEM_PROMPT = """You are an enterprise FinOps analyst for managed AI services.
 Use only the supplied structured evidence. Never invent prices, usage, savings,
-or service capabilities. Explain the recommendation in plain language, mention
-quality/business risk, and keep the answer under 120 words. Recommendations are
+or service capabilities. Write ONE short paragraph of at most 60 words in plain
+language: what to do, the total saving, and the main quality or business risk.
+Do not list every deployment and do not use bullet points or markdown headings;
+the interface already shows each recommendation separately. Recommendations are
 proposals and require approval before any Lambda action changes production."""
 
 
@@ -161,6 +166,33 @@ class LLMReasoner:
         except (OSError, urllib.error.URLError):
             return False
 
+    def _ollama_payload(self, prompt: str) -> dict[str, Any]:
+        """One payload for both transports; they used to disagree on num_predict.
+
+        `think: false` matters a lot on CPU. A reasoning model like qwen3 will
+        otherwise spend the whole token budget on hidden reasoning and return a
+        truncated summary — measured 11.0s and cut off mid-sentence with it on,
+        4.8s and complete with it off. Ollama ignores the flag for models that
+        do not reason, so it is safe to always send.
+        """
+        return {
+            "model": self._model("ollama"),
+            "stream": False,
+            "think": os.getenv("OLLAMA_THINK", "false").lower() == "true",
+            # Ollama evicts an idle model after ~5 minutes, and reloading it
+            # costs more than the generation itself. Hold it resident so the
+            # second question in a demo is not the slow one.
+            "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            "options": {
+                "temperature": 0.1,
+                "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "110")),
+            },
+        }
+
     def _ollama_windows_api(self, prompt: str) -> str:
         powershell_path = os.getenv("OLLAMA_POWERSHELL_PATH", "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
         command = (
@@ -169,15 +201,7 @@ class LLMReasoner:
             "-Method Post -ContentType 'application/json' -Body $body; "
             "$response | ConvertTo-Json -Depth 20 -Compress"
         )
-        payload = {
-            "model": self._model("ollama"),
-            "stream": False,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            "options": {"temperature": 0.1, "num_predict": 180},
-        }
+        payload = self._ollama_payload(prompt)
         result = subprocess.run(
             [powershell_path, "-NoProfile", "-NonInteractive", "-Command", command],
             input=json.dumps(payload),
@@ -250,18 +274,6 @@ class LLMReasoner:
             )
             return result.stdout.strip()
 
-        data = self._request(
-            f"{base}/api/chat",
-            {
-                "model": self._model("ollama"),
-                "stream": False,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                "options": {"temperature": 0.1},
-            },
-            {},
-        )
+        data = self._request(f"{base}/api/chat", self._ollama_payload(prompt), {})
         return data["message"]["content"]
 
