@@ -440,11 +440,13 @@ class FinOpsAnalystAgent:
                 and shutdown_allowed
                 and non_critical
             )
-            # Under pressure: sustained load, or a 95th percentile genuinely at
-            # the ceiling. Set at 90/75 rather than 85/70 because a healthy
-            # always-on API peaks in the high 80s without being in trouble, and
-            # flagging a quarter of the estate for scale-up is not actionable.
-            is_scale_up = p95_cpu > 90.0 or week_avg_cpu > 75.0
+            # Scale-up needs *sustained* pressure, not just a high peak. A p95
+            # of 99% against a median of 28% is a bursty workload: it wants
+            # burst headroom or autoscaling, not a permanently bigger machine,
+            # and proposing one is how a FinOps tool loses credibility.
+            is_scale_up = (p95_cpu > 90.0 and p50_cpu > 40.0) or week_avg_cpu > 75.0
+            # High peaks over a low median: worth a human look, not a resize.
+            is_bursty = p95_cpu > 90.0 and p50_cpu <= 40.0
             # Rightsizing needs headroom on BOTH cpu and memory. Memory is the
             # guard that stops the classic mistake: a cache or in-memory store
             # sits at 10% CPU and 90% memory, and downsizing it on CPU alone
@@ -457,7 +459,7 @@ class FinOpsAnalystAgent:
                 and criticality != "high"
             )
             # Reserved for genuine trouble, not for having a daily peak.
-            is_risky = (criticality == "high" and incidents_seen > 0) or p95_cpu > 90.0
+            is_risky = (criticality == "high" and incidents_seen > 0) or is_bursty
             memory_bound = p95_cpu < 40.0 and p95_mem >= 75.0
 
             confidence = self._confidence(avg_cpu, avg_net, incidents_seen, criticality, is_shutdown_candidate, is_scale_down, is_risky)
@@ -503,7 +505,7 @@ class FinOpsAnalystAgent:
                 "Recommended Action": action,
                 "Confidence": confidence,
                 "Business Impact": self._business_impact(environment, criticality, estimated_savings, incidents_seen, action),
-                "Reason": self._reason(action, p95_cpu, p50_cpu, p95_mem, avg_net, environment, criticality, estimated_savings, incidents_seen, memory_bound),
+                "Reason": self._reason(action, p95_cpu, p50_cpu, p95_mem, avg_net, environment, criticality, estimated_savings, incidents_seen, memory_bound, is_bursty),
             })
         return pd.DataFrame(rows)
 
@@ -583,8 +585,15 @@ class FinOpsAnalystAgent:
         estimated_savings: float,
         incidents_seen: int,
         memory_bound: bool,
+        bursty: bool = False,
     ) -> str:
         """Explain the decision in the numbers that drove it."""
+        if action == "APPLICATION_REVIEW" and bursty:
+            return (
+                f"CPU spikes to {p95_cpu:.0f}% but the median is only {p50_cpu:.0f}%. That is a bursty "
+                f"workload, not a constantly loaded one — it needs burst headroom or autoscaling rather "
+                f"than a permanently larger machine."
+            )
         if action == "SCALE_UP":
             return (
                 f"Peak CPU reaches {p95_cpu:.0f}% with a median of {p50_cpu:.0f}%, leaving only "
