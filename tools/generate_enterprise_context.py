@@ -39,6 +39,26 @@ SKU_BY_CLASS = {
     "production": ["Standard_D4s_v5", "Standard_D8s_v5", "Standard_E4s_v5"],
 }
 
+# Size follows what was *provisioned*, not what is used — which is the whole
+# point of rightsizing. An over-provisioned machine is by definition on a large
+# SKU running light, so that is where the money is; sizing it as a B2s made the
+# entire scale-down case worth about $14/month and not worth anyone's attention.
+SKU_BY_ARCHETYPE = {
+    "zombie": ["Standard_D2s_v5", "Standard_D4s_v5", "Standard_B2ms"],
+    "oversized": ["Standard_D8s_v5", "Standard_E8s_v5", "Standard_D16s_v5", "Standard_D4s_v5"],
+    "dev_workstation": ["Standard_D4s_v5", "Standard_D8s_v5"],
+    "ci_runner": ["Standard_F8s_v2", "Standard_D8s_v5"],
+    "batch_nightly": ["Standard_E8s_v5", "Standard_E16s_v5"],
+    "interactive_web": ["Standard_D8s_v5", "Standard_D4s_v5"],
+    "api_backend": ["Standard_D8s_v5", "Standard_D16s_v5"],
+    "database": ["Standard_E16s_v5", "Standard_E8s_v5"],
+    "memory_bound": ["Standard_E8s_v5", "Standard_E4s_v5"],
+    # Saturated machines are saturated precisely because they are too small.
+    "saturated": ["Standard_D4s_v5", "Standard_D8s_v5"],
+    "real_corestack_production": ["Standard_D4s_v5", "Standard_D8s_v5"],
+}
+
+# Approximate Azure pay-as-you-go Linux rates, USD/hour.
 HOURLY_RATE_USD = {
     "Standard_B1s": 0.012,
     "Standard_B1ms": 0.021,
@@ -47,8 +67,13 @@ HOURLY_RATE_USD = {
     "Standard_D2s_v5": 0.096,
     "Standard_D4s_v5": 0.192,
     "Standard_D8s_v5": 0.384,
+    "Standard_D16s_v5": 0.768,
+    "Standard_D32s_v5": 1.536,
     "Standard_E2s_v5": 0.126,
     "Standard_E4s_v5": 0.252,
+    "Standard_E8s_v5": 0.504,
+    "Standard_E16s_v5": 1.008,
+    "Standard_F8s_v2": 0.338,
 }
 
 
@@ -64,19 +89,38 @@ def choose(value: str, items: list[str]) -> str:
 
 
 def infer_environment(vm: str, workload_class: str) -> str:
+    """Name hints win over workload class.
+
+    Checking `workload_class == "production"` first meant a machine literally
+    named *-UAT was labelled prod because its archetype happened to be an API,
+    which then made it high-criticality. What a machine is named is stronger
+    evidence of its environment than how hard it happens to be working.
+    """
     name = vm.lower()
-    if "prod" in name or workload_class == "production":
-        return "prod"
     if "uat" in name:
         return "uat"
-    if "test" in name or "demo" in name or "rule" in name:
+    if "test" in name or "demo" in name or "rule" in name or "sample" in name:
         return "test"
-    if "dev" in name:
+    if "dev" in name or "poc" in name:
         return "dev"
+    if "prod" in name or workload_class == "production":
+        return "prod"
     return choose(vm + "env", ["dev", "test", "uat", "prod"])
 
 
-def infer_criticality(environment: str, application: str, workload_class: str) -> str:
+def infer_criticality(environment: str, application: str, workload_class: str, archetype: str = "") -> str:
+    """Criticality follows what the machine does, not just whether it is tagged.
+
+    Keying it on `application != "untagged"` gave 34 low / 1 high across the
+    estate, because most machines carry no tag. A database or always-on API is
+    high-criticality whether or not somebody remembered to label it.
+    """
+    if archetype in {"database", "api_backend", "saturated", "real_corestack_production"}:
+        return "high"
+    if archetype in {"interactive_web", "memory_bound", "batch_nightly"}:
+        return "high" if environment == "prod" else "medium"
+    if archetype in {"zombie", "dev_workstation"}:
+        return "low"
     if environment == "prod" and application != "untagged":
         return "high"
     if environment in {"prod", "uat"} or workload_class in {"moderate", "production"}:
@@ -89,11 +133,13 @@ def build_inventory(vm_df: pd.DataFrame, tags: dict) -> pd.DataFrame:
     for vm, group in vm_df.groupby("resource_id"):
         rng = stable_rng(vm)
         workload_class = str(group["workload_class"].iloc[0])
+        archetype = str(group["archetype"].iloc[0]) if "archetype" in group else ""
         app_info = tags.get(vm, {})
         application = app_info.get("application", "untagged")
         environment = infer_environment(vm, workload_class)
-        criticality = infer_criticality(environment, application, workload_class)
-        sku = choose(vm + "sku", SKU_BY_CLASS.get(workload_class, SKU_BY_CLASS["low_variable"]))
+        criticality = infer_criticality(environment, application, workload_class, archetype)
+        sku_pool = SKU_BY_ARCHETYPE.get(archetype) or SKU_BY_CLASS.get(workload_class, SKU_BY_CLASS["low_variable"])
+        sku = choose(vm + "sku", sku_pool)
         shutdown_allowed = environment != "prod" and criticality != "high"
         rows.append({
             "resource_id": vm,

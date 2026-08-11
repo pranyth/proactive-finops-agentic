@@ -396,10 +396,23 @@ class FinOpsAnalystAgent:
         for vm, group in df.groupby("resource_id"):
             group = group.sort_values("timestamp")
             latest = group.tail(48)
+            # A week of history for the percentiles: 48h can miss a weekly cycle
+            # entirely, and a batch job that only runs at 02:00 looks idle if you
+            # sample the wrong two days.
+            week = group.tail(168)
             cpu = group["cpu_percent"].fillna(0)
+            week_cpu = week["cpu_percent"].fillna(0)
             latest_cpu = latest["cpu_percent"].fillna(0)
             latest_net = latest["network_percent"].fillna(0)
+            week_mem = week["memory_percent"].fillna(0) if "memory_percent" in week else pd.Series([0.0])
             threshold = float(cpu.mean() + 1.5 * cpu.std())
+            # Percentiles, not mean+1.5*std. A daily peak exceeds mean+1.5*std by
+            # definition, so the old test flagged every healthy diurnal workload
+            # as risky; it only stayed quiet because the demo data was flat.
+            p95_cpu = float(week_cpu.quantile(0.95))
+            p50_cpu = float(week_cpu.quantile(0.50))
+            p95_mem = float(week_mem.quantile(0.95))
+            week_avg_cpu = float(week_cpu.mean())
             avg_cpu = float(latest_cpu.mean())
             max_cpu = float(latest_cpu.max())
             avg_net = float(latest_net.mean())
@@ -415,23 +428,44 @@ class FinOpsAnalystAgent:
             region = inv.get("region", "unknown")
             vm_sku = inv.get("vm_sku", "unknown")
             monthly = float(monthly_cost.get(vm, 0.0))
-            savings_pct = self._savings_pct(avg_cpu, workload, environment, shutdown_allowed)
-            estimated_savings = round(monthly * savings_pct, 2)
             incidents_seen = int(incident_count.get(vm, 0))
             actions_seen = int(action_count.get(vm, 0))
             is_tagged = app != "untagged"
             non_critical = environment != "prod" and criticality != "high"
+
+            # Nothing to do at all: peak demand never gets near the box.
             is_shutdown_candidate = (
-                avg_cpu < 2.0
-                and avg_net < 18.0
-                and workload in {"truly_idle", "low_variable"}
+                p95_cpu < 3.0
+                and avg_net < 15.0
                 and shutdown_allowed
                 and non_critical
             )
-            is_scale_down = avg_cpu < threshold * 0.30 and threshold > 5.0 and criticality != "high"
-            is_risky = max_cpu > threshold or avg_cpu > threshold * 0.85 or (criticality == "high" and incidents_seen > 0)
+            # Scale-up needs *sustained* pressure, not just a high peak. A p95
+            # of 99% against a median of 28% is a bursty workload: it wants
+            # burst headroom or autoscaling, not a permanently bigger machine,
+            # and proposing one is how a FinOps tool loses credibility.
+            is_scale_up = (p95_cpu > 90.0 and p50_cpu > 40.0) or week_avg_cpu > 75.0
+            # High peaks over a low median: worth a human look, not a resize.
+            is_bursty = p95_cpu > 90.0 and p50_cpu <= 40.0
+            # Rightsizing needs headroom on BOTH cpu and memory. Memory is the
+            # guard that stops the classic mistake: a cache or in-memory store
+            # sits at 10% CPU and 90% memory, and downsizing it on CPU alone
+            # takes the application down.
+            is_scale_down = (
+                not is_scale_up
+                and not is_shutdown_candidate
+                and p95_cpu < 40.0
+                and p95_mem < 75.0
+                and criticality != "high"
+            )
+            # Reserved for genuine trouble, not for having a daily peak.
+            is_risky = (criticality == "high" and incidents_seen > 0) or is_bursty
+            memory_bound = p95_cpu < 40.0 and p95_mem >= 75.0
+
             confidence = self._confidence(avg_cpu, avg_net, incidents_seen, criticality, is_shutdown_candidate, is_scale_down, is_risky)
-            action = self._recommended_action(is_shutdown_candidate, is_scale_down, is_risky)
+            action = self._recommended_action(is_shutdown_candidate, is_scale_down, is_risky, is_scale_up)
+            savings_pct = self._savings_pct(action, p95_cpu)
+            estimated_savings = round(monthly * savings_pct, 2)
             rows.append({
                 "VM": vm,
                 "Provider": cloud.get("provider", "azure"),
@@ -455,17 +489,23 @@ class FinOpsAnalystAgent:
                 "Max CPU 48h": round(max_cpu, 2),
                 "Avg Network 48h": round(avg_net, 2),
                 "Dynamic Threshold": round(threshold, 2),
+                "P50 CPU 7d": round(p50_cpu, 2),
+                "P95 CPU 7d": round(p95_cpu, 2),
+                "P95 Memory 7d": round(p95_mem, 2),
+                "CPU Headroom": round(100.0 - p95_cpu, 2),
                 "Estimated Monthly Cost USD": round(monthly, 2),
                 "Estimated Savings Monthly USD": estimated_savings,
                 "Incident Count": incidents_seen,
                 "Historical Action Count": actions_seen,
                 "Shutdown Candidate": is_shutdown_candidate,
                 "Scale Down Candidate": is_scale_down,
+                "Scale Up Candidate": is_scale_up,
+                "Memory Bound": memory_bound,
                 "Risky": is_risky,
                 "Recommended Action": action,
                 "Confidence": confidence,
                 "Business Impact": self._business_impact(environment, criticality, estimated_savings, incidents_seen, action),
-                "Reason": self._recommendation_reason(avg_cpu, avg_net, threshold, workload, app, environment, criticality, shutdown_allowed, estimated_savings, incidents_seen),
+                "Reason": self._reason(action, p95_cpu, p50_cpu, p95_mem, avg_net, environment, criticality, estimated_savings, incidents_seen, memory_bound, is_bursty),
             })
         return pd.DataFrame(rows)
 
@@ -475,13 +515,20 @@ class FinOpsAnalystAgent:
         daily = cost.groupby("resource_id")["daily_cost"].mean() if "daily_cost" in cost else pd.Series(dtype=float)
         return (daily * 30).round(2).to_dict()
 
-    def _savings_pct(self, avg_cpu: float, workload: str, environment: str, shutdown_allowed: bool) -> float:
-        if shutdown_allowed and environment != "prod" and avg_cpu < 2.0 and workload in {"truly_idle", "low_variable"}:
-            return 0.45
-        if avg_cpu < 8.0:
-            return 0.22
-        if avg_cpu < 18.0:
-            return 0.12
+    def _savings_pct(self, action: str, p95_cpu: float) -> float:
+        """Savings follow the action and how much headroom justifies it.
+
+        Previously any machine under 18% CPU was credited with savings even when
+        the agent proposed nothing for it, which inflated the fleet total with
+        savings nobody could actually collect.
+        """
+        if action == "SCHEDULE_SHUTDOWN":
+            # Stopping outside business hours, not deleting: ~65% of the week.
+            return 0.65
+        if action == "SCALE_DOWN":
+            # Each halving of SKU saves 50%. Peak below 20% of capacity means
+            # two sizes down is defensible; below 40%, one size.
+            return 0.50 if p95_cpu < 20.0 else 0.25
         return 0.0
 
     def _confidence(
@@ -504,7 +551,11 @@ class FinOpsAnalystAgent:
             score = 48
         return round(min(98.0, max(35.0, score)), 1)
 
-    def _recommended_action(self, shutdown: bool, scale_down: bool, risky: bool) -> str:
+    def _recommended_action(self, shutdown: bool, scale_down: bool, risky: bool, scale_up: bool = False) -> str:
+        # Capacity risk outranks cost: never propose saving money on a machine
+        # that is already struggling.
+        if scale_up:
+            return "SCALE_UP"
         if shutdown:
             return "SCHEDULE_SHUTDOWN"
         if scale_down:
@@ -522,34 +573,60 @@ class FinOpsAnalystAgent:
             return f"{criticality.title()} criticality with {incidents_seen} related incidents; avoid automated remediation."
         return "No immediate cost or reliability action required."
 
-    def _recommendation_reason(
+    def _reason(
         self,
-        avg_cpu: float,
+        action: str,
+        p95_cpu: float,
+        p50_cpu: float,
+        p95_mem: float,
         avg_net: float,
-        threshold: float,
-        workload: str,
-        app: str,
         environment: str,
         criticality: str,
-        shutdown_allowed: bool,
         estimated_savings: float,
         incidents_seen: int,
+        memory_bound: bool,
+        bursty: bool = False,
     ) -> str:
-        if avg_cpu < 2.0 and avg_net < 18.0 and workload in {"truly_idle", "low_variable"}:
-            approval = "shutdown is policy-allowed" if shutdown_allowed else "shutdown needs policy approval"
+        """Explain the decision in the numbers that drove it."""
+        if action == "APPLICATION_REVIEW" and bursty:
             return (
-                f"Low CPU/network with {workload} class; {approval}; "
-                f"{environment}/{criticality} context; estimated savings ${estimated_savings:,.2f}."
+                f"CPU spikes to {p95_cpu:.0f}% but the median is only {p50_cpu:.0f}%. That is a bursty "
+                f"workload, not a constantly loaded one — it needs burst headroom or autoscaling rather "
+                f"than a permanently larger machine."
             )
-        if avg_cpu < threshold * 0.30 and threshold > 5.0:
-            context = f"owned by {app}" if app != "untagged" else "no application tag to check ownership against"
+        if action == "SCALE_UP":
             return (
-                f"Recent CPU averages {avg_cpu:.1f}%, far below this machine's own "
-                f"dynamic threshold of {threshold:.1f}% ({context})."
+                f"Peak CPU reaches {p95_cpu:.0f}% with a median of {p50_cpu:.0f}%, leaving only "
+                f"{100 - p95_cpu:.0f}% headroom. Memory peaks at {p95_mem:.0f}%. This machine is "
+                f"capacity-constrained, not wasteful."
             )
-        if avg_cpu > threshold or incidents_seen > 0:
-            return f"Recent CPU or incident history indicates risk; threshold {threshold:.1f}%, incidents {incidents_seen}."
-        return "Recent utilization is within normal range."
+        if action == "SCHEDULE_SHUTDOWN":
+            return (
+                f"Peak CPU over the last week is {p95_cpu:.1f}% and network averages {avg_net:.1f}%. "
+                f"Nothing is using this machine, shutdown is policy-allowed in {environment}, and "
+                f"stopping it outside business hours saves about ${estimated_savings:,.2f} per month."
+            )
+        if action == "SCALE_DOWN":
+            return (
+                f"Peak CPU is {p95_cpu:.0f}% and peak memory {p95_mem:.0f}%, so the machine never uses "
+                f"most of what it is paying for. Rightsizing saves roughly ${estimated_savings:,.2f} per month."
+            )
+        if action == "APPLICATION_REVIEW":
+            if incidents_seen:
+                return (
+                    f"{criticality.title()}-criticality workload with {incidents_seen} recorded "
+                    f"incident(s); peak CPU {p95_cpu:.0f}%. Investigate before any cost change."
+                )
+            return f"Peak CPU reaches {p95_cpu:.0f}%, close to saturation. Review before optimizing."
+        if memory_bound:
+            return (
+                f"CPU peaks at only {p95_cpu:.0f}% but memory peaks at {p95_mem:.0f}%. Memory is the "
+                f"binding constraint, so this machine must not be rightsized on CPU alone."
+            )
+        return (
+            f"Peak CPU {p95_cpu:.0f}%, peak memory {p95_mem:.0f}%. Utilization sits in the expected "
+            f"band for a {criticality}-criticality {environment} workload."
+        )
 
     def _answer_low_peak_shutdown(self):
         recs_df = self._vm_recommendation_frame()
@@ -581,7 +658,7 @@ class FinOpsAnalystAgent:
         if not candidates.empty:
             candidates["Recommended Action"] = "SCALE_DOWN"
             candidates["Reason"] = candidates.apply(
-                lambda row: f"CPU is below dynamic threshold {row['Dynamic Threshold']:.1f}% but this VM is not a shutdown candidate; rightsize instead of stopping it.", axis=1
+                lambda row: f"Peak CPU {row['P95 CPU 7d']:.0f}% and peak memory {row['P95 Memory 7d']:.0f}% leave room to drop a size, but the machine is in use — rightsize it rather than stopping it.", axis=1
             )
         savings = float(candidates["Estimated Savings Monthly USD"].sum()) if not candidates.empty else 0.0
         answer = f"I found {len(candidates)} VMs that can be reviewed for scale down, representing about ${savings:,.2f} in monthly savings potential."
@@ -604,13 +681,10 @@ class FinOpsAnalystAgent:
                 "Load VM telemetry before making capacity decisions.",
             )
 
-        utilization_ratio = recs_df["Max CPU 48h"] / recs_df["Dynamic Threshold"].clip(lower=1)
-        scale_mask = (
-            (recs_df["Avg CPU 48h"] > recs_df["Dynamic Threshold"] * 0.85)
-            | (utilization_ratio > 1.15)
-            | ((recs_df["Business Criticality"] == "high") & (recs_df["Incident Count"] > 0) & (recs_df["Max CPU 48h"] > recs_df["Dynamic Threshold"] * 0.95))
-        ) & (~recs_df["Shutdown Candidate"]) & (~recs_df["Scale Down Candidate"])
-
+        # The frame already decided this using percentiles; re-deriving it here
+        # from the old mean+1.5*std threshold gave a different answer to the one
+        # shown on the decision card for the same machine.
+        scale_mask = recs_df["Scale Up Candidate"]
         candidates = recs_df.loc[scale_mask].copy()
         if not candidates.empty:
             candidates["Recommended Action"] = "SCALE_UP"
@@ -618,27 +692,31 @@ class FinOpsAnalystAgent:
             candidates["Business Impact"] = candidates.apply(
                 lambda row: f"Capacity protection for {row['Environment']} workload; prevents performance risk rather than saving cost.", axis=1
             )
-            candidates["Reason"] = candidates.apply(
-                lambda row: f"CPU pressure is near/above dynamic threshold {row['Dynamic Threshold']:.1f}%; max CPU {row['Max CPU 48h']:.1f}%, incidents {row['Incident Count']}.", axis=1
+            candidates = candidates.sort_values(
+                ["P95 CPU 7d", "Incident Count"], ascending=[False, False]
+            ).head(12)
+            total_at_risk = float(candidates["Estimated Monthly Cost USD"].sum())
+            answer = (
+                f"{len(candidates)} machines are running out of headroom. Their 95th-percentile CPU sits "
+                f"above 85% or their weekly average above 70%, so peak demand is already close to the "
+                f"ceiling. These carry ${total_at_risk:,.2f} per month of workload that would degrade "
+                f"before it saves anything."
             )
-            candidates = candidates.assign(_ratio=utilization_ratio.loc[candidates.index]).sort_values(
-                ["_ratio", "Incident Count", "Business Criticality"], ascending=[False, False, True]
-            ).drop(columns=["_ratio"]).head(12)
-            answer = f"I found {len(candidates)} VM candidates that may need scale-up review based on CPU pressure, incidents, and business criticality."
-            next_action = "Review these VMs with application owners, then trigger the scale-up action payload only after approval."
+            next_action = "Review these with application owners and raise capacity before the next peak."
         else:
-            candidates = recs_df.copy()
-            candidates["Utilization Ratio"] = (candidates["Max CPU 48h"] / candidates["Dynamic Threshold"].clip(lower=1)).round(2)
-            candidates = candidates.sort_values(["Utilization Ratio", "Max CPU 48h"], ascending=[False, False]).head(5)
+            candidates = recs_df.sort_values("P95 CPU 7d", ascending=False).head(5).copy()
             candidates["Recommended Action"] = "KEEP_RUNNING"
             candidates["Estimated Savings Monthly USD"] = 0.0
             candidates["Confidence"] = 82.0
             candidates["Business Impact"] = "No scale-up needed from the current telemetry window. Continue monitoring."
             candidates["Reason"] = candidates.apply(
-                lambda row: f"No scale-up signal: max CPU {row['Max CPU 48h']:.1f}% is within dynamic threshold {row['Dynamic Threshold']:.1f}%; avg CPU {row['Avg CPU 48h']:.1f}%.", axis=1
+                lambda row: f"Peak CPU {row['P95 CPU 7d']:.0f}% leaves {row['CPU Headroom']:.0f}% headroom; no capacity risk.", axis=1
             )
-            answer = "I do not find any VM that needs scale-up in the selected telemetry window. The highest-utilization VMs are still within their dynamic thresholds, so the agent recommends KEEP_RUNNING and monitoring."
-            next_action = "No scale-up action should be triggered now; keep monitoring and re-run if CPU spikes or incidents appear."
+            answer = (
+                "No machine needs scale-up in this window. The busiest still hold comfortable headroom "
+                "at their 95th percentile, so the agent recommends KEEP_RUNNING and continued monitoring."
+            )
+            next_action = "No scale-up action should be triggered now; re-run if peak CPU climbs or incidents appear."
 
         return (
             answer,
@@ -655,10 +733,14 @@ class FinOpsAnalystAgent:
 
     def _answer_risky_vms(self):
         recs_df = self._vm_recommendation_frame()
+        # Risk = how little headroom is left, weighted by how much it would hurt.
+        # Scoring on peak-over-its-own-average just measures burstiness, which
+        # every healthy diurnal workload has.
         recs_df["Risk Score"] = (
-            recs_df["Max CPU 48h"] / recs_df["Dynamic Threshold"].clip(lower=1)
-            + recs_df["Incident Count"] * 0.15
-            + recs_df["Business Criticality"].map({"high": 0.35, "medium": 0.12, "low": 0.0}).fillna(0)
+            (recs_df["P95 CPU 7d"] / 100.0) * 2.0
+            + (recs_df["P95 Memory 7d"] / 100.0)
+            + recs_df["Incident Count"] * 0.25
+            + recs_df["Business Criticality"].map({"high": 0.6, "medium": 0.2, "low": 0.0}).fillna(0)
         ).round(2)
         risky = recs_df.sort_values("Risk Score", ascending=False).head(12).copy()
         risky["Recommended Action"] = "APPLICATION_REVIEW"
@@ -667,9 +749,13 @@ class FinOpsAnalystAgent:
             lambda row: f"Review reliability risk for {row['Application']} in {row['Environment']}; avoid automated cost action until validated.", axis=1
         )
         risky["Reason"] = risky.apply(
-            lambda row: f"Risk score {row['Risk Score']}; max CPU {row['Max CPU 48h']:.1f}% vs threshold {row['Dynamic Threshold']:.1f}%, incidents {row['Incident Count']}, criticality {row['Business Criticality']}.", axis=1
+            lambda row: f"Risk score {row['Risk Score']}: peak CPU {row['P95 CPU 7d']:.0f}%, peak memory {row['P95 Memory 7d']:.0f}%, {row['Incident Count']} incident(s), {row['Business Criticality']} criticality.", axis=1
         )
-        answer = f"The highest-risk VMs combine utilization spikes, incident history, and business criticality. I ranked the top {len(risky)} by composite risk score."
+        answer = (
+            f"I ranked machines by remaining headroom weighted by business impact. The top {len(risky)} "
+            f"combine high peak utilization, incident history and criticality — these are reliability "
+            f"risks, not savings opportunities."
+        )
         return (
             answer,
             risky.to_dict("records"),
