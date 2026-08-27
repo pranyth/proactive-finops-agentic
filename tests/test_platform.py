@@ -156,3 +156,48 @@ class FleetReadTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ForecastTests(unittest.TestCase):
+    """The predictive layer: it must be trained, honest, and actually reachable."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.client = TestClient(app)
+
+    def test_forecast_is_evaluated_on_held_out_data(self) -> None:
+        summary = self.client.get("/api/infra/summary").json()
+        # Pick a machine with real movement; a flat one proves nothing.
+        target = max(summary["top_resources"], key=lambda r: r["avg_cpu"])["resource"]
+        body = self.client.get(f"/api/forecast/{target}").json()
+
+        self.assertGreater(body["trained_on"], 0)
+        self.assertGreater(body["tested_on"], 0)
+        self.assertEqual(len(body["actual"]), len(body["predicted"]))
+        # An error worse than 15 CPU points would mean the model learned nothing.
+        self.assertLess(body["metrics"]["mae"], 15.0)
+
+    def test_threshold_uses_training_data_only(self) -> None:
+        """Deriving the alert threshold from the full series would leak the test period."""
+        summary = self.client.get("/api/infra/summary").json()
+        target = max(summary["top_resources"], key=lambda r: r["avg_cpu"])["resource"]
+        body = self.client.get(f"/api/forecast/{target}").json()
+        self.assertGreater(body["threshold"], 0)
+        self.assertLess(pd_ts(body["train_end"]), pd_ts(body["timestamps"][0]))
+
+    def test_forward_projection_is_validated_not_asserted(self) -> None:
+        summary = self.client.get("/api/infra/summary").json()
+        target = max(summary["top_resources"], key=lambda r: r["avg_cpu"])["resource"]
+        ahead = self.client.get(f"/api/forecast/{target}").json()["ahead"]
+        self.assertEqual(ahead["horizon_hours"], 24)
+        self.assertIsInstance(ahead["will_breach"], bool)
+        # The forward number must ship with its own held-out error.
+        self.assertIn("mae", ahead["validation"])
+
+    def test_unknown_resource_is_a_404(self) -> None:
+        self.assertEqual(self.client.get("/api/forecast/nope").status_code, 404)
+
+
+def pd_ts(value: str):
+    import pandas as pd
+    return pd.Timestamp(value)

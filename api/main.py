@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from agents import datacache, fleet
+from agents import datacache, fleet, forecasting
 from agents.meeting2 import bootstrap_meeting2
 from agents.storage import DB_PATH, get_connection, init_db, table_count
 from agents.unified import UnifiedFinOpsAgent, suggestions_for
@@ -68,6 +68,9 @@ def warm_caches() -> None:
         fleet.summary()
     except Exception as exc:  # noqa: BLE001 - a cold cache must never block startup
         print(f"[warm-up] skipped infrastructure cache: {exc}")
+    # Each forecast fits two models and takes ~20s, so this runs on a background
+    # thread. The endpoint reports `warming` until it lands.
+    forecasting.warm_fleet_forecast()
 
 
 app = FastAPI(
@@ -210,6 +213,23 @@ def infra_resource(resource_id: str) -> dict[str, Any]:
     if not detail:
         raise HTTPException(status_code=404, detail=f"Unknown resource: {resource_id}")
     return json_safe(detail)
+
+
+@app.get("/api/forecast/summary")
+def forecast_summary(limit: int = 10) -> dict[str, Any]:
+    """Which machines are predicted to breach their threshold in the next day."""
+    if forecasting.is_warming():
+        return {"warming": True, "forecasts": [], "covered": 0, "predicted_breaches": 0}
+    return json_safe({"warming": False, **forecasting.fleet_forecast(limit)})
+
+
+@app.get("/api/forecast/{resource_id}")
+def forecast_resource(resource_id: str) -> dict[str, Any]:
+    """Backtest plus 24-hour projection for one machine."""
+    result = forecasting.forecast_resource(resource_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"No forecast available for {resource_id}")
+    return json_safe(result)
 
 
 @app.get("/api/ai-finops/summary")

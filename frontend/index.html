@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FinOps Copilot</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20" />
+    <link rel="stylesheet" href="/assets/styles.css?v=21" />
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -18,6 +18,7 @@
       <nav class="viewnav" aria-label="Sections">
         <button class="viewtab is-active" data-view="ask" aria-current="page">Ask</button>
         <button class="viewtab" data-view="infrastructure">Infrastructure</button>
+        <button class="viewtab" data-view="forecast">Forecast</button>
         <button class="viewtab" data-view="ai">AI services</button>
         <button class="viewtab" data-view="activity">Activity</button>
       </nav>
@@ -177,6 +178,55 @@
         </section>
       </section>
 
+      <!-- ══ FORECAST ══ -->
+      <section class="view" data-view="forecast">
+        <div class="section-head">
+          <div>
+            <h2>Predicted demand</h2>
+            <p class="section-sub">A per-machine model learns each workload's daily and weekly rhythm,
+              then projects peak CPU 24 hours out — so capacity problems surface before they bite.</p>
+          </div>
+          <span class="pill" id="forecast-scope">—</span>
+        </div>
+
+        <div class="kpi-row" id="forecast-kpis"></div>
+
+        <section class="card">
+          <div class="section-head compact">
+            <div>
+              <h3>Machines at risk in the next 24 hours</h3>
+              <p class="section-sub">Ranked by predicted peak against each machine's own alert threshold.</p>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="forecast-table">
+              <thead><tr>
+                <th scope="col">Resource</th>
+                <th scope="col" class="num">Predicted peak</th>
+                <th scope="col" class="num">Threshold</th>
+                <th scope="col" class="num">Headroom</th>
+                <th scope="col">Verdict</th>
+                <th scope="col" class="num">Backtest MAE</th>
+                <th scope="col" class="num">Breach recall</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-head compact">
+            <div>
+              <h3>Predicted vs actual</h3>
+              <p class="section-sub">Held-out data the model never trained on. This is the honesty check.</p>
+            </div>
+            <label class="sr-only" for="forecast-picker">Resource</label>
+            <select id="forecast-picker"></select>
+          </div>
+          <div id="forecast-detail"></div>
+        </section>
+      </section>
+
       <!-- ══ AI SERVICES ══ -->
       <section class="view" data-view="ai">
         <div class="section-head">
@@ -290,6 +340,6 @@
     </aside>
 
     <div class="tooltip" id="tooltip" hidden aria-hidden="true"></div>
-    <script src="/assets/app.js?v=20" defer></script>
+    <script src="/assets/app.js?v=21" defer></script>
   </body>
 </html>

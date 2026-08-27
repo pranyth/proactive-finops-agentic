@@ -368,6 +368,19 @@ figcaption p { color: var(--ink-2); font-size: 13px; margin-top: 3px; }
 .legend span { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); }
 .legend i { width: 10px; height: 10px; border-radius: 3px; }
 
+/* Predicted-vs-actual. Two categorical slots, both direct-labelled in the
+   legend so identity never rests on colour alone. */
+.linechart { display: block; width: 100%; height: 220px; overflow: visible; }
+.linechart .grid { stroke: var(--grid); stroke-width: 1; }
+.linechart .tick { fill: var(--muted); font-size: 10px; }
+.linechart .threshold { stroke: var(--critical); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.line-actual { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; }
+.line-predicted { fill: none; stroke: var(--series-2); stroke-width: 2; stroke-linejoin: round; stroke-dasharray: 4 3; }
+.legend i.legend-dash {
+  width: 14px; height: 0; border-radius: 0;
+  border-top: 2px dashed var(--critical);
+}
+
 .sparkline { display: block; width: 100%; height: 54px; }
 .spark-line { fill: none; stroke: var(--seq-fill); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .spark-area { fill: var(--seq-fill); opacity: .10; }

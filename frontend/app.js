@@ -3,6 +3,7 @@
 const state = {
   overview: null,
   infra: null,
+  forecast: null,
   ai: null,
   result: null,
   decisions: [],
@@ -151,6 +152,43 @@ function sparkline(values) {
   </svg>`;
 }
 
+/**
+ * Two lines on one axis: what happened, and what the model said would happen.
+ * Two series means a legend is mandatory — colour alone must never be the only
+ * thing telling them apart.
+ */
+function dualLine(actual, predicted, threshold) {
+  if (actual.length < 2) return `<p class="empty">Not enough history to plot.</p>`;
+  const w = 720, h = 200, padL = 34, padR = 10, padT = 12, padB = 16;
+  const all = actual.concat(predicted, threshold != null ? [threshold] : []);
+  const max = Math.max(...all) * 1.08;
+  const min = Math.min(0, ...all);
+  const span = max - min || 1;
+  const x = (i) => padL + (i / (actual.length - 1)) * (w - padL - padR);
+  const y = (v) => padT + (1 - (v - min) / span) * (h - padT - padB);
+  const path = (arr) => arr.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+
+  const ticks = [min, min + span / 2, max].map((v) => `
+    <line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${w - padR}" y2="${y(v).toFixed(1)}" class="grid" />
+    <text x="${padL - 6}" y="${(y(v) + 3.5).toFixed(1)}" class="tick" text-anchor="end">${v.toFixed(0)}</text>`).join("");
+
+  const alertLine = threshold == null ? "" : `
+    <line x1="${padL}" y1="${y(threshold).toFixed(1)}" x2="${w - padR}" y2="${y(threshold).toFixed(1)}" class="threshold" />`;
+
+  return `
+    <svg class="linechart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img"
+         aria-label="Predicted versus actual CPU across the held-out period">
+      ${ticks}${alertLine}
+      <path class="line-actual" d="${path(actual)}" />
+      <path class="line-predicted" d="${path(predicted)}" />
+    </svg>
+    <div class="legend">
+      <span><i style="background:var(--series-1)"></i>Actual CPU</span>
+      <span><i style="background:var(--series-2)"></i>Predicted CPU</span>
+      ${threshold == null ? "" : `<span><i class="legend-dash"></i>Alert threshold ${threshold}%</span>`}
+    </div>`;
+}
+
 /* ── views ───────────────────────────────────────────────── */
 
 function switchView(view) {
@@ -164,6 +202,7 @@ function switchView(view) {
   $$(".view").forEach((section) => section.classList.toggle("is-active", section.dataset.view === view));
 
   if (view === "infrastructure" && !state.infra) loadInfrastructure();
+  if (view === "forecast" && !state.forecast) loadForecast();
   if (view === "ai" && !state.ai) loadAiServices();
   if (view === "activity") loadActivity();
 }
@@ -496,6 +535,86 @@ const TONES = {
 };
 const toneFor = (action) => TONES[action] || "neutral";
 
+/* ── forecast view ───────────────────────────────────────── */
+
+async function loadForecast() {
+  const target = $("#forecast-table tbody");
+  target.innerHTML = `<tr><td colspan="7">Fitting models…</td></tr>`;
+
+  let data = await api("/api/forecast/summary");
+  // Models train on a background thread at startup; poll rather than block.
+  if (data.warming) {
+    $("#forecast-scope").textContent = "training models…";
+    for (let i = 0; i < 40 && data.warming; i += 1) {
+      await new Promise((r) => setTimeout(r, 3000));
+      data = await api("/api/forecast/summary");
+    }
+  }
+  state.forecast = data;
+
+  if (!data.forecasts.length) {
+    $("#forecast-scope").textContent = "unavailable";
+    target.innerHTML = `<tr><td colspan="7">No forecast available.</td></tr>`;
+    return;
+  }
+
+  $("#forecast-scope").textContent = `${data.covered} of ${data.total} machines`;
+  const recalls = data.forecasts.map((f) => f.breach_recall_pct).filter((v) => v != null);
+  const meanMae = data.forecasts.reduce((s, f) => s + f.mae, 0) / data.forecasts.length;
+  $("#forecast-kpis").innerHTML = [
+    kpi("Predicted breaches", data.predicted_breaches, "in the next 24 hours",
+        data.predicted_breaches ? "" : "good"),
+    kpi("Tightest headroom", data.tightest_headroom == null ? "—" : `${data.tightest_headroom} pts`,
+        "closest any machine comes to its threshold"),
+    kpi("Machines modelled", `${data.covered} / ${data.total}`, data.selection),
+    kpi("Mean error", `${meanMae.toFixed(2)} pts`, "CPU points, on held-out data"),
+    kpi("Breach recall", recalls.length ? `${(recalls.reduce((a, b) => a + b, 0) / recalls.length).toFixed(0)}%` : "—",
+        "of real breaches called in advance"),
+  ].join("");
+
+  target.innerHTML = data.forecasts.map((f) => {
+    const tone = f.will_breach ? "critical" : "good";
+    const verdict = f.will_breach ? "Will breach" : "Within limits";
+    return `<tr>
+      <td>${esc(f.resource)}</td>
+      <td class="num">${f.predicted_peak_cpu == null ? "—" : pct(f.predicted_peak_cpu)}</td>
+      <td class="num">${pct(f.threshold)}</td>
+      <td class="num">${f.headroom_to_threshold == null ? "—" : `${f.headroom_to_threshold} pts`}</td>
+      <td><span class="cell-action"><i class="status-dot tone-${tone}"></i>${verdict}</span></td>
+      <td class="num">${f.mae.toFixed(2)}</td>
+      <td class="num">${f.breach_recall_pct == null ? "—" : pct(f.breach_recall_pct)}</td>
+    </tr>`;
+  }).join("");
+
+  const picker = $("#forecast-picker");
+  picker.innerHTML = data.forecasts
+    .map((f) => `<option value="${esc(f.resource)}">${esc(f.resource)}</option>`).join("");
+  loadForecastDetail(data.forecasts[0].resource);
+}
+
+async function loadForecastDetail(resourceId) {
+  const target = $("#forecast-detail");
+  target.innerHTML = `<p class="empty">Fitting model for ${esc(resourceId)}…</p>`;
+  try {
+    const d = await api(`/api/forecast/${encodeURIComponent(resourceId)}`);
+    const m = d.metrics;
+    const ahead = d.ahead || {};
+    const v = ahead.validation || {};
+    target.innerHTML = `
+      <div class="metric-grid" style="margin-bottom:18px">
+        <div><small>Mean absolute error</small><strong>${m.mae} pts</strong><em>on ${d.tested_on} unseen hours</em></div>
+        <div><small>RMSE</small><strong>${m.rmse} pts</strong></div>
+        <div><small>Breaches called</small><strong>${m.breaches_caught} / ${m.breaches_caught + m.breaches_missed}</strong><em>${m.false_alarms} false alarms</em></div>
+        <div><small>Predicted peak (${ahead.horizon_hours || 24}h)</small><strong>${ahead.predicted_peak_cpu == null ? "—" : pct(ahead.predicted_peak_cpu)}</strong><em>${v.mae ? `±${v.mae} pts` : ""}</em></div>
+      </div>
+      ${dualLine(d.actual, d.predicted, d.threshold)}
+      <p class="safety-note">${esc(d.model)} · trained on ${d.trained_on} hours up to
+        ${esc(String(d.train_end).replace("T", " "))} · threshold from training data only.</p>`;
+  } catch (error) {
+    target.innerHTML = `<p class="empty">Could not forecast ${esc(resourceId)}: ${esc(error.message)}</p>`;
+  }
+}
+
 /* ── AI services view ────────────────────────────────────── */
 
 async function loadAiServices() {
@@ -629,6 +748,7 @@ function initEvents() {
   });
 
   $("#resource-picker").addEventListener("change", (event) => loadResource(event.target.value));
+  $("#forecast-picker").addEventListener("change", (event) => loadForecastDetail(event.target.value));
   $("#run-events").addEventListener("click", runEventDemo);
 }
 

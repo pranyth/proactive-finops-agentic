@@ -14,6 +14,7 @@ from typing import Any
 
 from agents.analyst import FinOpsAnalystAgent
 from agents.core import AgentResult, infra_lambda_function
+from agents.forecasting import fleet_forecast
 from agents.storage import get_connection, init_db, insert_agent_run
 from ai_finops.analyst import AIFinOpsAnalystAgent
 from events.schemas import (
@@ -71,6 +72,20 @@ class CoordinatorAgent:
         start = time.perf_counter()
         profile = self.analyst.profiler.profile()
         payload = event["payload"]
+
+        # This used to publish "forecasting stage completed for demo scope" with
+        # no model behind it. It now carries the real projection, or says
+        # plainly that the forecast is still training.
+        forecast = fleet_forecast()
+        if forecast.get("forecasts"):
+            breaches = forecast["predicted_breaches"]
+            forecast_summary = (
+                f"Forecast complete for {forecast['covered']} of {forecast['total']} machines "
+                f"({forecast['selection']}); {breaches} predicted to breach within 24 hours."
+            )
+        else:
+            forecast_summary = "Forecast models are still training; projection unavailable this cycle."
+
         publish_event(
             EVENT_FORECAST_COMPLETED,
             source=self.name,
@@ -80,12 +95,15 @@ class CoordinatorAgent:
                 "dataset": profile["dataset_name"],
                 "vm_count": profile["vm_count"],
                 "rows_seen": payload.get("rows_seen", profile["vm_rows"]),
-                "forecast_scope": "latest_48h",
-                "summary": "Telemetry batch profiled; forecasting stage completed for demo scope.",
+                "forecast_scope": "24h_peak_cpu",
+                "machines_forecast": forecast.get("covered", 0),
+                "predicted_breaches": forecast.get("predicted_breaches", 0),
+                "at_risk": [row["resource"] for row in forecast.get("forecasts", []) if row["will_breach"]],
+                "summary": forecast_summary,
             },
         )
-        summary = f"Telemetry event accepted for {profile['vm_count']} VMs; forecast event published."
-        self._audit(summary, profile["vm_rows"], ["Dataset profile refreshed", "forecast.completed event published"], start)
+        summary = f"Telemetry event accepted for {profile['vm_count']} VMs; {forecast_summary}"
+        self._audit(summary, profile["vm_rows"], ["Dataset profile refreshed", forecast_summary], start)
         return {"status": "processed", "summary": summary, "published": [EVENT_FORECAST_COMPLETED]}
 
     def _handle_forecast(self, event: dict[str, Any]) -> dict[str, Any]:
