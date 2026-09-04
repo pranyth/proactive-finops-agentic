@@ -138,36 +138,51 @@ class UnifiedFinOpsAgent:
         routes: list[dict[str, Any]] = []
         decisions: list[Decision] = []
 
+        explain = bool(context.get("explain", True))
+        # A whole-estate question is summarised once at the end, so the analysts
+        # run in evidence mode and the single LLM call is spent on the headline.
+        explain_route = explain and domain != BOTH
+
         if domain in {INFRASTRUCTURE, BOTH}:
-            answer = self.infra.run(question, {"time_window": context.get("time_window", "latest_48h")})
+            answer = self.infra.run(question, {
+                "time_window": context.get("time_window", "latest_48h"),
+                "explain": explain_route,
+            })
             rows = [_infra_decision(row, index) for index, row in enumerate(answer.recommendations)]
             decisions.extend(row for row in rows if row is not None)
             routes.append(_route(INFRASTRUCTURE, answer))
 
-        explain = bool(context.get("explain", True))
         if domain in {AI_SERVICES, BOTH}:
             answer = self.ai.run(question, {
                 "time_window": context.get("time_window", "latest_30d"),
                 "provider": "all",
-                "explain": explain,
+                "explain": explain_route,
             })
             decisions.extend(_ai_decision(row, index) for index, row in enumerate(answer.recommendations))
             routes.append(_route(AI_SERVICES, answer))
 
         decisions.sort(key=lambda item: (item.savings_usd, item.confidence), reverse=True)
         totals = _totals(decisions)
+        headline, headline_mode = _headline(domain, routes, totals, question, explain)
+        tools = _dedupe(tool for route in routes for tool in route["tools_used"])
+        if domain == BOTH and headline_mode == "llm":
+            # The analysts ran in evidence mode for a merged question; the model
+            # wrote the paragraph the user actually reads, so label it that way.
+            tools = [t for t in tools if t != "Evidence Explanation Fallback"]
+            if "LLM Explanation Service" not in tools:
+                tools.append("LLM Explanation Service")
 
         return {
             "question": question,
             "domain": domain,
             "domain_label": DOMAIN_LABELS[domain],
             "routing": "explicit" if requested in {INFRASTRUCTURE, AI_SERVICES, BOTH} else "auto",
-            "answer": _headline(domain, routes, totals),
+            "answer": headline,
             "intent": "+".join(route["intent"] for route in routes),
             "decisions": [decision.to_dict() for decision in decisions],
             "totals": totals,
             "routes": routes,
-            "tools_used": _dedupe(tool for route in routes for tool in route["tools_used"]),
+            "tools_used": tools,
             "next_action": routes[0]["next_action"] if routes else "",
             "requirement_check": [row for route in routes for row in route["requirement_check"]],
             "suggestions": suggestions_for(domain),
@@ -210,23 +225,36 @@ def _totals(decisions: list[Decision]) -> dict[str, Any]:
     }
 
 
-def _headline(domain: str, routes: list[dict[str, Any]], totals: dict[str, Any]) -> str:
+def _headline(domain: str, routes: list[dict[str, Any]], totals: dict[str, Any],
+              question: str = "", explain: bool = True) -> tuple[str, str]:
     """The lead paragraph only.
 
     When a question spans both domains the per-analyst wording stays on its own
     route so the console can show it as a labelled breakdown, rather than three
-    paragraphs concatenated into one wall of text.
+    paragraphs concatenated into one wall of text. A single-domain question is
+    already worded by its analyst; only the merged case needs writing here.
     """
     if not routes:
-        return "I could not route that question to an analyst."
+        return "I could not route that question to an analyst.", "none"
     if domain != BOTH:
-        return routes[0]["answer"]
-    return (
+        mode = "llm" if "LLM Explanation Service" in routes[0]["tools_used"] else "evidence_policy_fallback"
+        return routes[0]["answer"], mode
+    baseline = (
         f"Across the whole estate I found {totals['decisions']} decisions worth about "
         f"${totals['savings_usd']:,.2f} per month — ${totals['infrastructure_savings_usd']:,.2f} from "
         f"{totals['infrastructure_decisions']} infrastructure changes and "
         f"${totals['ai_savings_usd']:,.2f} from {totals['ai_decisions']} AI-service changes."
     )
+    if not explain:
+        return baseline, "evidence_policy_fallback"
+    evidence = {
+        "totals": totals,
+        "per_domain": [
+            {"domain": route["domain_label"], "finding": route["answer"]} for route in routes
+        ],
+    }
+    result = LLMReasoner().explain(question, evidence, baseline)
+    return result.text, result.mode
 
 
 def _dedupe(values: Any) -> list[str]:

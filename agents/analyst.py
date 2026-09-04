@@ -19,6 +19,7 @@ import pandas as pd
 
 from agents import datacache
 from agents.core import AgentAnswer
+from ai_finops.llm import LLMReasoner, LLMResult
 
 VM_CSV = Path("data/augmented_vm_metrics.csv")
 DB_CSV = Path("data/db_metrics.csv")
@@ -263,6 +264,7 @@ class FinOpsAnalystAgent:
     def __init__(self) -> None:
         self.profiler = DatasetProfiler()
         self.requirements = RequirementChecker()
+        self.llm = LLMReasoner()
 
     def run(self, question: str, context: dict[str, Any] | None = None) -> AgentAnswer:
         context = context or {"time_window": "latest_48h", "cloud": "azure"}
@@ -287,8 +289,29 @@ class FinOpsAnalystAgent:
         else:
             answer, recs, evidence, tools, next_action = self._answer_general(question)
 
+        # Same contract as the AI analyst: the deterministic sentence is the
+        # validated baseline and the model only rewords it, so a dead or slow
+        # endpoint degrades to the exact text this agent produced anyway.
+        # context["explain"] is false on the console's first fetch (decisions
+        # render immediately) and on a whole-estate question, where the router
+        # spends the single LLM call on the merged headline instead.
+        llm_result = (
+            self.llm.explain(question, evidence, answer)
+            if context.get("explain", True)
+            else LLMResult(answer, "evidence_policy_fallback", "none")
+        )
+        evidence["reasoning_runtime"] = {
+            "mode": llm_result.mode,
+            "model": llm_result.model,
+            "fallback_reason": llm_result.error,
+        }
+        tools = [
+            *tools,
+            "LLM Explanation Service" if llm_result.mode == "llm" else "Evidence Explanation Fallback",
+        ]
+
         return AgentAnswer(
-            answer=answer,
+            answer=llm_result.text,
             intent=intent,
             dataset_profile=profile,
             requirement_check=requirement_check,
@@ -425,7 +448,11 @@ class FinOpsAnalystAgent:
             shutdown_allowed = bool(inv.get("shutdown_allowed", False))
             approval_required = bool(inv.get("approval_required", True))
             owner = inv.get("owner", tags.get(vm, {}).get("app_owner", "unknown"))
-            region = inv.get("region", "unknown")
+            # Provider and instance type come from the multicloud lookup, so the
+            # region must too — inventory only carries the original Azure region
+            # and pairing it with an AWS provider emits "aws / westus2" payloads.
+            cloud_region = cloud.get("region", "unknown")
+            region = cloud_region if cloud_region != "unknown" else inv.get("region", "unknown")
             vm_sku = inv.get("vm_sku", "unknown")
             monthly = float(monthly_cost.get(vm, 0.0))
             incidents_seen = int(incident_count.get(vm, 0))
