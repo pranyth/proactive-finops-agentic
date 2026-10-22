@@ -4,6 +4,7 @@ const state = {
   overview: null,
   infra: null,
   forecast: null,
+  capacity: null,
   ai: null,
   result: null,
   decisions: [],
@@ -203,6 +204,7 @@ function switchView(view) {
 
   if (view === "infrastructure" && !state.infra) loadInfrastructure();
   if (view === "forecast" && !state.forecast) loadForecast();
+  if (view === "capacity" && !state.capacity) loadCapacity();
   if (view === "ai" && !state.ai) loadAiServices();
   if (view === "activity") loadActivity();
 }
@@ -531,7 +533,7 @@ async function loadResource(resourceId) {
 
 const TONES = {
   SCHEDULE_SHUTDOWN: "good", SCALE_DOWN: "good", MOVE_TO_SMALLER_SKU: "good",
-  SCALE_UP: "warning", APPLICATION_REVIEW: "serious", DB_INVESTIGATION: "serious",
+  SCALE_UP: "warning", PLAN_SCALE_UP: "warning", COMMIT_CAPACITY: "good", APPLICATION_REVIEW: "serious", DB_INVESTIGATION: "serious",
 };
 const toneFor = (action) => TONES[action] || "neutral";
 
@@ -613,6 +615,159 @@ async function loadForecastDetail(resourceId) {
   } catch (error) {
     target.innerHTML = `<p class="empty">Could not forecast ${esc(resourceId)}: ${esc(error.message)}</p>`;
   }
+}
+
+/* ── capacity plan view ──────────────────────────────────── */
+
+async function loadCapacity() {
+  const target = $("#capacity-table tbody");
+  target.innerHTML = `<tr><td colspan="9">Fitting models…</td></tr>`;
+
+  let data = await api("/api/capacity/summary");
+  // Same bounded poll as the 24h forecast: at most 40 tries, 3 s apart.
+  if (data.warming) {
+    $("#capacity-scope").textContent = "training models…";
+    for (let i = 0; i < 40 && data.warming; i += 1) {
+      await new Promise((r) => setTimeout(r, 3000));
+      data = await api("/api/capacity/summary");
+    }
+  }
+  if (!data.machines.length) {
+    $("#capacity-scope").textContent = "unavailable";
+    target.innerHTML = `<tr><td colspan="9">No capacity history available.</td></tr>`;
+    return;
+  }
+  state.capacity = data;
+
+  $("#capacity-scope").textContent = `${data.covered} machines`;
+  const b = data.breaching;
+  $("#capacity-kpis").innerHTML = [
+    kpi("Over 80% today", b.now, "not a forecast: act now"),
+    kpi("Cross within 1 week", b["1 week"], "fine today, p90 says no"),
+    kpi("Cross within 1 month", b["1 month"], "schedule an increase"),
+    kpi("Cross in 3–6 months", b["3 months"] + b["6 months"], "plan and budget for it"),
+    kpi("Safe commitments", money(data.commitment_savings_usd), "per month, from the p10 floor", "good"),
+  ].join("");
+
+  const cell = (v) => `<td class="num${v >= 80 ? " is-hot" : ""}">${v == null ? "—" : pct(v)}</td>`;
+  target.innerHTML = data.machines.map((m) => {
+    const d = m.decisions[0];
+    const decision = d
+      ? `<span class="cell-action"><i class="status-dot tone-${toneFor(d.action)}"></i>${esc(d.action.replaceAll("_", " ").toLowerCase())}</span>`
+      : `<span class="muted">no change</span>`;
+    return `<tr>
+      <td>${esc(m.resource)}</td>
+      <td>${esc(m.regime)}</td>
+      <td class="num">${pct(m.current_peak)}</td>
+      ${cell(m.p90["1 week"])}${cell(m.p90["1 month"])}${cell(m.p90["3 months"])}${cell(m.p90["6 months"])}
+      <td class="num">${m.first_breach === "now" ? "now" : m.days_to_breach == null ? "—" : m.days_to_breach}</td>
+      <td>${decision}</td>
+    </tr>`;
+  }).join("");
+
+  const picker = $("#capacity-picker");
+  picker.innerHTML = data.machines
+    .map((m) => `<option value="${esc(m.resource)}">${esc(m.resource)}</option>`).join("");
+  // Open on a machine the forecast is warning about, not one already over the line.
+  const upcoming = data.machines.find((m) => m.first_breach && m.first_breach !== "now") || data.machines[0];
+  picker.value = upcoming.resource;
+  loadCapacityDetail(upcoming.resource);
+}
+
+async function loadCapacityDetail(resourceId) {
+  const target = $("#capacity-detail");
+  target.innerHTML = `<p class="empty">Loading ${esc(resourceId)}…</p>`;
+  try {
+    const d = await api(`/api/capacity/${encodeURIComponent(resourceId)}`);
+    target.innerHTML = `
+      <div class="metric-grid" style="margin-bottom:18px">
+        ${d.horizons.map((row) => `<div><small>${esc(row.label)} (${esc(row.date)})</small>
+          <strong>${pct(row.p50)}</strong><em>p10 ${pct(row.p10)} · p90 ${pct(row.p90)}</em></div>`).join("")}
+      </div>
+      ${fanChart(d)}
+      ${backtestChart(d.backtest)}
+      ${d.decisions.map((x) => `<p class="safety-note"><strong>${esc(x.action.replaceAll("_", " "))}</strong> · ${esc(x.reason)}${x.savings_usd ? ` Saves ${moneyExact(x.savings_usd)}/month.` : ""}</p>`).join("")}
+      <p class="safety-note">${esc(d.regime)} growth · trend ${d.trend_per_month >= 0 ? "+" : ""}${d.trend_per_month} pts/month
+        · as of ${esc(d.as_of)} · ${moneyExact(d.monthly_cost_usd)}/month today.</p>`;
+  } catch (error) {
+    target.innerHTML = `<p class="empty">Could not load ${esc(resourceId)}: ${esc(error.message)}</p>`;
+  }
+}
+
+const BACKTEST_LINES = [
+  ["rf", "Random Forest", "#1baf7a", "2 3"],
+  ["linear", "Linear trend", "var(--series-2)", "6 4"],
+  ["hybrid_q90", "Trend + p90 (this console)", "#008300", ""],
+];
+
+function backtestChart(bt) {
+  if (!bt || !bt.dates || bt.dates.length < 2) return "";
+  const w = 720, h = 200, padL = 34, padR = 10, padT = 12, padB = 22;
+  const series = [bt.actual, ...BACKTEST_LINES.map(([k]) => bt.models[k])];
+  const all = series.flat().concat([80]);
+  const max = Math.max(...all) * 1.06, min = Math.min(...all) * 0.94;
+  const x = (i) => padL + (i / (bt.dates.length - 1)) * (w - padL - padR);
+  const y = (v) => padT + (1 - (v - min) / (max - min)) * (h - padT - padB);
+  const path = (arr) => arr.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const ticks = [min, (min + max) / 2, max].map((v) => `
+    <line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${w - padR}" y2="${y(v).toFixed(1)}" class="grid" />
+    <text x="${padL - 6}" y="${(y(v) + 3.5).toFixed(1)}" class="tick" text-anchor="end">${v.toFixed(0)}</text>`).join("");
+  const ends = [0, bt.dates.length - 1].map((i) => `
+    <text x="${x(i).toFixed(1)}" y="${h - 6}" class="tick" text-anchor="${i ? "end" : "start"}">${esc(bt.dates[i])}</text>`).join("");
+  const lines = BACKTEST_LINES.map(([k, , color, dash]) =>
+    `<path d="${path(bt.models[k])}" style="fill:none;stroke:${color};stroke-width:2;stroke-dasharray:${dash || "none"}" />`).join("");
+  return `
+    <h4 style="margin:22px 0 4px">Proof: what each model said six months before</h4>
+    <p class="section-sub">Every point is a forecast made ${bt.horizon_days} days before that date, trained only on data
+      up to the day it was made. ${bt.beyond_history} of these ${bt.dates.length} weeks went higher than anything the
+      model had seen.</p>
+    <svg class="linechart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img"
+         aria-label="Six-month-ahead forecasts against actual weekly peaks">
+      ${ticks}${ends}${lines}
+      <path class="line-actual" d="${path(bt.actual)}" />
+    </svg>
+    <div class="legend">
+      <span><i style="background:var(--series-1)"></i>Actual weekly peak</span>
+      ${BACKTEST_LINES.map(([k, label, color]) =>
+        `<span><i style="background:${color}"></i>${esc(label)} · off by ${bt.mae[k]} pts on average</span>`).join("")}
+    </div>`;
+}
+
+function fanChart(d) {
+  const hist = d.history.weekly_peak;
+  const w = 720, h = 220, padL = 34, padR = 10, padT = 12, padB = 22;
+  const lastDay = 182;
+  const span = hist.length + lastDay;
+  const x = (day) => padL + ((day + hist.length - 1) / (span - 1)) * (w - padL - padR);
+  const values = hist.concat(d.horizons.flatMap((r) => [r.p10, r.p90]), [d.breach_threshold]);
+  const max = Math.max(...values) * 1.08;
+  const y = (v) => padT + (1 - v / max) * (h - padT - padB);
+  const now = hist[hist.length - 1];
+  const histPath = hist.map((v, i) => `${i ? "L" : "M"}${x(i - hist.length + 1).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const pts = (key) => [[0, now], ...d.horizons.map((r) => [r.days, r[key]])];
+  const line = (arr) => arr.map(([day, v], i) => `${i ? "L" : "M"}${x(day).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const band = `${line(pts("p90"))} ${pts("p10").reverse().map(([day, v]) => `L${x(day).toFixed(1)},${y(v).toFixed(1)}`).join(" ")} Z`;
+  const ticks = [0, max / 2, max].map((v) => `
+    <line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${w - padR}" y2="${y(v).toFixed(1)}" class="grid" />
+    <text x="${padL - 6}" y="${(y(v) + 3.5).toFixed(1)}" class="tick" text-anchor="end">${v.toFixed(0)}</text>`).join("");
+  const labels = d.horizons.map((r) => `
+    <text x="${x(r.days).toFixed(1)}" y="${h - 6}" class="tick" text-anchor="middle">${esc(r.label)}</text>`).join("");
+  return `
+    <svg class="linechart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img"
+         aria-label="Weekly peak demand history and forecast band for ${esc(d.resource)}">
+      ${ticks}${labels}
+      <line x1="${padL}" y1="${y(d.breach_threshold).toFixed(1)}" x2="${w - padR}" y2="${y(d.breach_threshold).toFixed(1)}" class="threshold" />
+      <line x1="${x(0).toFixed(1)}" y1="${padT}" x2="${x(0).toFixed(1)}" y2="${h - padB}" class="grid" />
+      <path d="${band}" style="fill:var(--series-2);opacity:.18;stroke:none" />
+      <path class="line-actual" d="${histPath}" />
+      <path class="line-predicted" d="${line(pts("p50"))}" />
+    </svg>
+    <div class="legend">
+      <span><i style="background:var(--series-1)"></i>Weekly peak (actual)</span>
+      <span><i style="background:var(--series-2)"></i>Forecast median</span>
+      <span><i style="background:var(--series-2);opacity:.3"></i>p10–p90 band</span>
+      <span><i class="legend-dash"></i>${d.breach_threshold}% of capacity</span>
+    </div>`;
 }
 
 /* ── AI services view ────────────────────────────────────── */
@@ -749,6 +904,7 @@ function initEvents() {
 
   $("#resource-picker").addEventListener("change", (event) => loadResource(event.target.value));
   $("#forecast-picker").addEventListener("change", (event) => loadForecastDetail(event.target.value));
+  $("#capacity-picker").addEventListener("change", (event) => loadCapacityDetail(event.target.value));
   $("#run-events").addEventListener("click", runEventDemo);
 }
 

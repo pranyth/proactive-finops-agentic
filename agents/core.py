@@ -62,6 +62,10 @@ ACTION_CATALOG: dict[str, dict[str, str]] = {
     "MOVE_TO_PAY_PER_USE": {"label": "Move to pay-per-use", "tone": "good", "domain": "ai_services"},
     "CHANGE_SERVICE_TIER": {"label": "Change service tier", "tone": "good", "domain": "ai_services"},
     "SHUTDOWN_UNUSED_DEPLOYMENT": {"label": "Shut down unused deployment", "tone": "good", "domain": "ai_services"},
+    # Capacity planning (forecast-driven)
+    "PLAN_SCALE_UP": {"label": "Plan capacity increase", "tone": "warning", "domain": "capacity"},
+    "COMMIT_CAPACITY": {"label": "Commit to savings plan", "tone": "good", "domain": "capacity"},
+    "AVOID_COMMITMENT": {"label": "Do not commit capacity", "tone": "neutral", "domain": "capacity"},
     # Shared
     "PIPELINE_INVESTIGATION": {"label": "Pipeline investigation", "tone": "serious", "domain": "platform"},
     "COST_ANOMALY": {"label": "Cost anomaly", "tone": "critical", "domain": "platform"},
@@ -76,6 +80,9 @@ INFRA_LAMBDA_FUNCTIONS = {
     "APPLICATION_REVIEW": "finops-application-review-lambda",
     "DB_INVESTIGATION": "finops-db-investigation-lambda",
     "KEEP_RUNNING": "finops-no-op-lambda",
+    "PLAN_SCALE_UP": "finops-capacity-plan-lambda",
+    "COMMIT_CAPACITY": "finops-commitment-lambda",
+    "AVOID_COMMITMENT": "finops-no-op-lambda",
 }
 
 

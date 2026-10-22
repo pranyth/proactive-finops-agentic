@@ -227,6 +227,9 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 28px clamp(16px, 3vw, 
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .dot.infrastructure { background: var(--series-1); }
 .dot.ai_services    { background: var(--series-2); }
+.dot.capacity       { background: var(--series-3); }
+.data-table td.is-hot { color: var(--critical); font-weight: 600; }
+.data-table .muted  { color: var(--muted); }
 .dot.all            { background: var(--series-3); }
 
 .status { color: var(--muted); font-size: 13px; margin-top: 14px; }

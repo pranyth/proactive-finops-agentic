@@ -19,6 +19,7 @@
         <button class="viewtab is-active" data-view="ask" aria-current="page">Ask</button>
         <button class="viewtab" data-view="infrastructure">Infrastructure</button>
         <button class="viewtab" data-view="forecast">Forecast</button>
+        <button class="viewtab" data-view="capacity">Capacity plan</button>
         <button class="viewtab" data-view="ai">AI services</button>
         <button class="viewtab" data-view="activity">Activity</button>
       </nav>
@@ -224,6 +225,58 @@
             <select id="forecast-picker"></select>
           </div>
           <div id="forecast-detail"></div>
+        </section>
+      </section>
+
+      <!-- ══ CAPACITY PLAN ══ -->
+      <section class="view" data-view="capacity">
+        <div class="section-head">
+          <div>
+            <h2>Capacity plan: 1 week to 6 months</h2>
+            <p class="section-sub">A trend line carries each machine's demand forward; a quantile model adds the
+              weekly and seasonal shape around it. Short horizons read the p90 (do not run out), the commitment
+              decision reads the p10 (only commit to what you are sure to use).</p>
+          </div>
+          <span class="pill" id="capacity-scope">—</span>
+        </div>
+
+        <div class="kpi-row" id="capacity-kpis"></div>
+
+        <section class="card">
+          <div class="section-head compact">
+            <div>
+              <h3>Machines heading past 80% of capacity</h3>
+              <p class="section-sub">p90 forecast of each week's peak demand, as a share of today's machine size.</p>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="capacity-table">
+              <thead><tr>
+                <th scope="col">Resource</th>
+                <th scope="col">Growth</th>
+                <th scope="col" class="num">Peak now</th>
+                <th scope="col" class="num">1 week</th>
+                <th scope="col" class="num">1 month</th>
+                <th scope="col" class="num">3 months</th>
+                <th scope="col" class="num">6 months</th>
+                <th scope="col" class="num">Days to 80%</th>
+                <th scope="col">Decision</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-head compact">
+            <div>
+              <h3>Forecast band</h3>
+              <p class="section-sub">Last six months of weekly peaks, then the p10–p90 band at each horizon.</p>
+            </div>
+            <label class="sr-only" for="capacity-picker">Resource</label>
+            <select id="capacity-picker"></select>
+          </div>
+          <div id="capacity-detail"></div>
         </section>
       </section>
 
