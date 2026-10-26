@@ -209,6 +209,18 @@ function switchView(view) {
   if (view === "activity") loadActivity();
 }
 
+function kpiWithList(label, hint, machines) {
+  const options = machines.map((m) => `<option value="${esc(m.resource)}">${esc(m.resource)}${
+    m.first_breach && m.first_breach !== "now" ? ` · full in ${esc(m.first_breach)}` : ""}</option>`).join("");
+  return `<div class="kpi">
+    <span class="kpi-label">${esc(label)}</span>
+    <strong class="kpi-value">${machines.length}</strong>
+    <span class="kpi-hint">${esc(hint)}</span>
+    ${machines.length ? `<select class="kpi-select" aria-label="${esc(label)}: open a server">
+      <option value="">See which servers ▾</option>${options}</select>` : ""}
+  </div>`;
+}
+
 function kpi(label, value, hint, hintClass = "") {
   return `<div class="kpi">
     <span class="kpi-label">${esc(label)}</span>
@@ -645,10 +657,20 @@ async function loadCapacity() {
   $("#capacity-calibration").textContent = "";
   const b = data.breaching;
   $("#capacity-kpis").innerHTML = [
-    kpi("Full right now", b.now, "add capacity today"),
-    kpi("Will get full this year", b["1 month"] + b["3 months"] + b["6 months"] + b["12 months"], "fine today, plan ahead"),
+    kpiWithList("Full right now", "add capacity today",
+      data.machines.filter((m) => m.first_breach === "now")),
+    kpiWithList("Will get full this year", "fine today, plan ahead",
+      data.machines.filter((m) => m.first_breach && m.first_breach !== "now")),
     kpi("Can save per year", money(data.commitment_savings_usd * 12), "with 1-year discount deals", "good"),
   ].join("");
+  $$("#capacity-kpis select").forEach((select) => select.addEventListener("change", () => {
+    if (!select.value) return;
+    $$("#capacity-stories .chip").forEach((chip) => chip.classList.remove("is-active"));
+    $("#capacity-picker").value = select.value;
+    loadCapacityDetail(select.value);
+    $("#capacity-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+    select.value = "";
+  }));
 
   const cell = (v) => `<td class="num${v >= 80 ? " is-hot" : ""}">${v == null ? "—" : load(v)}</td>`;
   target.innerHTML = data.machines.map((m) => {

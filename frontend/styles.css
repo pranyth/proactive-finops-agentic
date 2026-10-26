@@ -486,3 +486,6 @@ pre {
   .decision { grid-template-columns: 4px minmax(0, 1fr); }
   .decision-value { grid-column: 2; text-align: left; padding: 0 0 16px; }
 }
+
+.kpi-select { margin-top: 10px; width: 100%; padding: 6px 8px; border-radius: 6px;
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--border-firm); font-size: 13px; }
