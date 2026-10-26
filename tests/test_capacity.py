@@ -95,6 +95,9 @@ class CapacityApiTests(unittest.TestCase):
         for row in body["horizons"]:
             self.assertLessEqual(row["p10"], row["p90"])
         self.assertEqual(len(body["history"]["dates"]), len(body["history"]["weekly_peak"]))
+        for row in body["horizons"]:
+            # The shown p90 is the model's p90 plus a non-negative fleet margin.
+            self.assertGreaterEqual(row["p90"], row["p90_model"])
         backtest = body["backtest"]
         self.assertEqual(len(backtest["dates"]), len(backtest["actual"]))
         self.assertEqual(set(backtest["mae"]), set(capacity.BACKTEST_MODELS))

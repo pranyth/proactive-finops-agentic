@@ -640,6 +640,11 @@ async function loadCapacity() {
   state.capacity = data;
 
   $("#capacity-scope").textContent = `${data.covered} machines`;
+  const cal = Object.entries(data.calibration || {}).filter(([, c]) => c)
+    .map(([label, c]) => `${label}: +${c.margin} pts (model alone covered ${c.model_coverage_pct}%)`).join(" · ");
+  $("#capacity-calibration").textContent = cal
+    ? `The model's own 90% line was too optimistic in testing, so each is widened by how far it missed before. ${cal}.`
+    : "";
   const b = data.breaching;
   $("#capacity-kpis").innerHTML = [
     kpi("Over 80% today", b.now, "not a forecast: act now"),
@@ -682,7 +687,8 @@ async function loadCapacityDetail(resourceId) {
     target.innerHTML = `
       <div class="metric-grid" style="margin-bottom:18px">
         ${d.horizons.map((row) => `<div><small>${esc(row.label)} (${esc(row.date)})</small>
-          <strong>${pct(row.p50)}</strong><em>p10 ${pct(row.p10)} · p90 ${pct(row.p90)}</em></div>`).join("")}
+          <strong>${pct(row.p50)}</strong><em>p10 ${pct(row.p10)} · p90 ${pct(row.p90)}</em>
+          <em>model said ${pct(row.p90_model)}, widened by its track record</em></div>`).join("")}
       </div>
       ${fanChart(d)}
       ${backtestChart(d.backtest)}

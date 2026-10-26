@@ -50,11 +50,12 @@ FIGURES = Path("research/figures")
 COST_RATIOS = [1, 2, 4, 9, 19]
 POOL = ("persistence", "linear", "rf", "hybrid")
 MIN_TRACK = 6
-MODELS = ALL_MODELS + ("selected", "selected_c90")
+MODELS = ALL_MODELS + ("selected", "selected_c90", "hybrid_q90_cal")
 LABELS = {
     "persistence": "Persistence", "linear": "Linear trend", "rf": "Random Forest",
     "hybrid": "Trend + RF", "hybrid_oob90": "Trend + RF + OOB margin", "hybrid_q90": "Trend + quantile GBM (p90)",
     "selected": "Track-record selection", "selected_c90": "Selection + conformal p90",
+    "hybrid_q90_cal": "p90 + fleet conformal margin (console)",
 }
 # Validated categorical order (dataviz palette, slots 1-6). Markers and dashes
 # carry identity too, so the figures survive greyscale print.
@@ -62,6 +63,7 @@ STYLE = {
     "persistence": ("#2a78d6", "o", ":"), "linear": ("#eb6834", "s", "--"), "rf": ("#1baf7a", "^", "-"),
     "hybrid": ("#eda100", "D", "-"), "hybrid_oob90": ("#e87ba4", "v", "-."), "hybrid_q90": ("#008300", "P", "-"),
     "selected": ("#6250d6", "X", "-"), "selected_c90": ("#e34948", "*", "-"),
+    "hybrid_q90_cal": ("#1f1f1d", "h", "--"),
 }
 HORIZON_LABEL = {h: label for label, h in HORIZONS.items()}
 
@@ -85,6 +87,23 @@ def add_track_record(df: pd.DataFrame) -> pd.DataFrame:
         g["selected"], g["selected_c90"], g["tracked"] = selected, calibrated, tracked
         out.append(g)
     return pd.concat(out, ignore_index=True)
+
+
+def add_fleet_calibration(df: pd.DataFrame) -> pd.DataFrame:
+    """The console's method, scored honestly: each p90 is widened by the 90th
+    percentile of the whole dataset's (actual - p90) errors known by its origin.
+    Falls back to the raw p90 until MIN_TRACK errors exist."""
+    df = df.copy()
+    df["hybrid_q90_cal"] = df["hybrid_q90"]
+    for (_, h), g in df.groupby(["dataset", "horizon"]):
+        errors = (g["actual"] - g["hybrid_q90"]).to_numpy()
+        origins = g["origin"].to_numpy()
+        for origin in np.unique(origins):
+            known = errors[origins + h <= origin]
+            if len(known) >= MIN_TRACK:
+                rows = g.index[origins == origin]
+                df.loc[rows, "hybrid_q90_cal"] += max(0.0, float(np.quantile(known, 0.9)))
+    return df
 
 
 def score(group: pd.DataFrame, model: str) -> dict[str, float]:
@@ -211,7 +230,7 @@ def figure_example(df: pd.DataFrame, dataset: str, series: str, horizon: int, na
 def main() -> None:
     df = pd.concat([pd.read_csv(RESULTS / f"forecasts_{name}.csv") for name in ("synthetic", "wikimedia")
                     if (RESULTS / f"forecasts_{name}.csv").exists()], ignore_index=True)
-    df = add_track_record(df)
+    df = add_fleet_calibration(add_track_record(df))
     print("share of forecasts with a track record:")
     print(df.groupby(["dataset", "horizon"])["tracked"].mean().mul(100).round(1).to_string(), "\n")
     FIGURES.mkdir(parents=True, exist_ok=True)
@@ -223,7 +242,7 @@ def main() -> None:
     by_regime.round(3).to_csv(RESULTS / "metrics_by_regime.csv", index=False)
 
     point = ["persistence", "linear", "rf", "hybrid", "selected"]
-    upper = ["hybrid_oob90", "hybrid_q90", "selected_c90"]
+    upper = ["hybrid_oob90", "hybrid_q90", "selected_c90", "hybrid_q90_cal"]
     figure_by_horizon(by_horizon, "mae", "MAE (pp of capacity)", point, "fig1_mae_vs_horizon.png")
     figure_by_horizon(by_horizon[by_horizon["dataset"] == "synthetic"], "beyond_capture",
                       "Beyond-history targets caught (%)", ["persistence", "linear", "rf", "hybrid", "hybrid_q90"],

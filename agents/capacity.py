@@ -38,6 +38,7 @@ INVENTORY_CSV = Path("data/vm_inventory.csv")
 # it as proof: what each model said six months before, against what happened.
 BACKTEST_CSV = Path("research/results/forecasts_synthetic.csv")
 BACKTEST_MODELS = ("rf", "linear", "hybrid_q90")
+CALIBRATION_QUANTILE = 0.9
 
 HORIZONS = {"1 week": 7, "1 month": 30, "3 months": 91, "6 months": 182}
 TREND_WINDOW = 365
@@ -236,7 +237,7 @@ def capacity_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
     `full=False` fits only the quantiles the decisions read (p90 everywhere, plus
     the 6-month p10): 5 models instead of 12, which is what the fleet table needs.
     """
-    return datacache.derived(f"capacity::{resource_id}::{full}", [CAPACITY_CSV, COST_CSV],
+    return datacache.derived(f"capacity::{resource_id}::{full}", [CAPACITY_CSV, COST_CSV, BACKTEST_CSV],
                              lambda: _build_plan(resource_id, full))
 
 
@@ -251,6 +252,7 @@ def _build_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
     s, rows = loaded
     origin = len(s) - 1
     last_date = rows["date"].iloc[-1]
+    margins = {h: c["margin"] for h, c in calibration().items()}
     horizons = []
     for label, h in HORIZONS.items():
         quantiles = (0.1, 0.5, 0.9) if full else (0.1, 0.9) if label == "6 months" else (0.9,)
@@ -259,8 +261,9 @@ def _build_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
             horizons.append({
                 "label": label, "days": h,
                 "date": (last_date + pd.Timedelta(days=h)).date().isoformat(),
-                "p10": _round(band.get(0.1)), "p50": _round(band.get(0.5)), "p90": round(band[0.9], 1),
-                "breach": band[0.9] >= BREACH_PCT,
+                "p10": _round(band.get(0.1)), "p50": _round(band.get(0.5)),
+                "p90": round(band[0.9] + margins.get(h, 0.0), 1), "p90_model": round(band[0.9], 1),
+                "breach": band[0.9] + margins.get(h, 0.0) >= BREACH_PCT,
             })
     monthly_cost = _monthly_cost(resource_id)
     current_peak = round(float(s.wk[origin]), 1)
@@ -286,6 +289,33 @@ def _build_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
     if full:
         plan["backtest"] = _backtest(resource_id)
     return plan
+
+
+def calibration() -> dict[int, dict[str, float]]:
+    """How much to widen the model's p90 so it covers ~90% of real outcomes.
+
+    The quantile model's p90 covered only 66-73% of backtest outcomes. The
+    margin is the 90th percentile of (actual - p90) across the whole fleet's
+    backtest per horizon (split-conformal). Pooled beats per-machine: tested
+    on forecasts calibrated only with errors known at the time, pooled landed
+    at 88-92% coverage, per-machine at 81-90% (research/analyze.py).
+    """
+    return datacache.derived("capacity::calibration", [BACKTEST_CSV], _build_calibration)
+
+
+def _build_calibration() -> dict[int, dict[str, float]]:
+    df = datacache.load_csv(BACKTEST_CSV)
+    if df.empty:
+        return {}
+    out = {}
+    for h, rows in df.groupby("horizon"):
+        errors = rows["actual"] - rows["hybrid_q90"]
+        out[int(h)] = {
+            "margin": round(max(0.0, float(np.quantile(errors, CALIBRATION_QUANTILE))), 2),
+            "model_coverage_pct": round(float((errors <= 0).mean() * 100), 1),
+            "forecasts": int(len(rows)),
+        }
+    return out
 
 
 def _backtest(resource_id: str, horizon: int = HORIZONS["6 months"]) -> dict[str, Any]:
@@ -358,7 +388,7 @@ def _decisions(horizons: list[dict[str, Any]], monthly_cost: float,
 
 def fleet_capacity() -> dict[str, Any]:
     """Every machine's plan, tightest first."""
-    return datacache.derived("capacity::fleet", [CAPACITY_CSV, COST_CSV], _build_fleet)
+    return datacache.derived("capacity::fleet", [CAPACITY_CSV, COST_CSV, BACKTEST_CSV], _build_fleet)
 
 
 def _build_fleet() -> dict[str, Any]:
@@ -389,7 +419,9 @@ def _build_fleet() -> dict[str, Any]:
         "horizons": list(HORIZONS),
         "breaching": {label: sum(1 for r in rows if r["first_breach"] == label) for label in ["now", *HORIZONS]},
         "commitment_savings_usd": round(sum(r["commitment_savings_usd"] for r in rows), 2),
-        "model": "linear trend (trailing year) + quantile gradient boosting on residuals (p10/p50/p90)",
+        "model": "linear trend (trailing year) + quantile gradient boosting on residuals; p90 widened by a "
+                 "fleet-wide conformal margin per horizon",
+        "calibration": {label: calibration().get(h) for label, h in HORIZONS.items()},
     }
 
 
