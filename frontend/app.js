@@ -732,11 +732,24 @@ function planHeadline(d) {
 // Demand is measured against today's server size, so it can pass 100%: the
 // server is maxed out and the rest of the work queues. Say that, not "125%".
 const load = (v) => (v >= 100 ? "Maxed out" : pct(v));
-const loadHint = (v) => (v >= 100 ? `<em>needs ~${(v / 100).toFixed(1)}× this server</em>` : "");
+const loadHint = (v, cpus) => {
+  if (!cpus) return v >= 100 ? `<em>needs ~${(v / 100).toFixed(1)}× this server</em>` : "";
+  const used = Math.round((v / 100) * cpus);
+  return v >= 100
+    ? `<em>needs ~${used} vCPUs, has ${cpus}</em>`
+    : `<em>≈ ${used} of ${cpus} vCPUs busy</em>`;
+};
+
+function sizeLine(d) {
+  if (!d.vm_sku) return "";
+  return `<p class="safety-note" style="margin:-8px 0 14px">Current size: <b>${esc(d.vm_sku)}</b>
+    · ${d.vcpus ?? "?"} vCPUs · ${moneyExact(d.monthly_cost_usd)}/month.
+    The % is how much of this server is in use at its busiest moment.</p>`;
+}
 
 function planTimeline(d) {
   const box = (title, value, full) => `<div class="plan-step${full ? " is-warn" : ""}">
-    <small>${esc(title)}</small><strong>${load(value)}</strong>${loadHint(value)}
+    <small>${esc(title)}</small><strong>${load(value)}</strong>${loadHint(value, d.vcpus)}
     <span class="status">${full ? "▲ Too full" : "✓ OK"}</span></div>`;
   return `<div class="plan-timeline">${box("Today", d.current_peak, d.over_now)}${
     d.horizons.map((row) => box(`In ${row.label}`, row.p90, row.breach)).join("")}</div>
@@ -757,6 +770,7 @@ async function loadCapacityDetail(resourceId, caption = "") {
     const d = await api(`/api/capacity/${encodeURIComponent(resourceId)}`);
     target.innerHTML = `
       ${planHeadline(d)}
+      ${sizeLine(d)}
       ${planTimeline(d)}
       ${fanChart(d)}
       ${proofLine(d.backtest)}

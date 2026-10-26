@@ -20,6 +20,7 @@ capacity will that week need".
 from __future__ import annotations
 
 import functools
+import re
 import threading
 from pathlib import Path
 from typing import Any
@@ -269,6 +270,8 @@ def _build_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
                 "breach": band[0.9] + margins.get(h, 0.0) >= BREACH_PCT,
             })
     monthly_cost = _monthly_cost(resource_id)
+    sku = inventory().get(resource_id, {}).get("vm_sku", "")
+    vcpus = re.search(r"_[A-Z]+(\d+)", sku)
     current_peak = round(float(s.wk[origin]), 1)
     history = rows.tail(365)
     plan = {
@@ -282,6 +285,9 @@ def _build_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
         "days_to_breach": _days_to_breach(s, origin),
         "breach_threshold": BREACH_PCT,
         "monthly_cost_usd": round(monthly_cost, 2),
+        # Every percentage on screen is a share of this machine.
+        "vm_sku": sku,
+        "vcpus": int(vcpus.group(1)) if vcpus else None,
         "horizons": horizons,
         "decisions": _decisions(horizons, monthly_cost, current_peak),
         "history": {
