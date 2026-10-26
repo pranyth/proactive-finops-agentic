@@ -251,20 +251,20 @@ def main() -> None:
                       "fig3_p90_coverage.png", reference=90.0)
     cost_models = ["persistence", "linear", "rf", "hybrid_q90", "selected", "selected_c90"]
     figure_cost(by_horizon, HORIZONS["3 months"], cost_models, "fig4_cost_vs_ratio_3m.png")
-    figure_cost(by_horizon, HORIZONS["6 months"], cost_models, "fig5_cost_vs_ratio_6m.png")
+    figure_cost(by_horizon, HORIZONS["12 months"], cost_models, "fig5_cost_vs_ratio_12m.png")
     if (df["dataset"] == "wikimedia").any():
         wiki = df[df["dataset"] == "wikimedia"]
         growth = wiki.groupby("series")["actual"].agg(lambda s: s.iloc[-1] - s.iloc[0]).idxmax()
-        figure_example(df, "wikimedia", growth, HORIZONS["6 months"], "fig6_example_wikimedia_6m.png")
+        figure_example(df, "wikimedia", growth, HORIZONS["12 months"], "fig6_example_wikimedia_12m.png")
     fastest = synthetic[synthetic["regime"] == "exponential"].groupby("series")["actual"].max().idxmax()
-    figure_example(df, "synthetic", fastest, HORIZONS["6 months"], "fig7_example_synthetic_6m.png")
+    figure_example(df, "synthetic", fastest, HORIZONS["12 months"], "fig7_example_synthetic_12m.png")
 
     pd.set_option("display.width", 200)
     cols = ["dataset", "horizon", "model", "n", "mae", "bias", "coverage", "breach_recall", "false_alarm",
             "beyond_n", "beyond_capture", "rel_cost_k1", "rel_cost_k9"]
     print(by_horizon[cols].round(2).to_string(index=False))
     print()
-    print(by_regime[by_regime["horizon"] == HORIZONS["6 months"]]
+    print(by_regime[by_regime["horizon"] == HORIZONS["12 months"]]
           .pivot(index="regime", columns="model", values="mae")[list(MODELS)].round(2).to_string())
 
 

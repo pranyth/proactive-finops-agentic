@@ -63,7 +63,7 @@ AI_TERMS = [
 FORECAST_TERMS = [
     "forecast", "forecasts", "predict", "predicted", "prediction", "projected", "projection",
     "next week", "next month", "next quarter", "next year", "coming months", "1 week", "one week",
-    "1 month", "one month", "3 months", "three months", "6 months", "six months", "run out",
+    "1 month", "one month", "3 months", "three months", "6 months", "six months", "12 months", "twelve months", "1 year", "one year", "run out",
     "running out", "will need", "capacity plan", "capacity planning", "growth", "trend", "trending",
     "savings plan", "reserved instance", "reserved instances", "commit", "commitment", "commitments",
 ]
@@ -285,7 +285,7 @@ def _headline(domain: str, routes: list[dict[str, Any]], totals: dict[str, Any],
 
 
 def _capacity_route(question: str, explain: bool) -> tuple[dict[str, Any], list[Decision]]:
-    """Forecast every machine 1 week to 6 months out and turn the bands into decisions."""
+    """Forecast every machine 1 to 12 months out and turn the bands into decisions."""
     tools = ["Capacity Forecaster (trend + quantile boosting)", "Decision Mapper"]
     if capacity.is_warming():
         answer = "The capacity models are still training; ask again in a minute."
@@ -306,17 +306,17 @@ def _capacity_route(question: str, explain: bool) -> tuple[dict[str, Any], list[
     baseline = (
         f"{breaching['now']} of {fleet['covered']} machines are already over {capacity.BREACH_PCT:.0f}% of "
         f"capacity and need scaling now. The forecast flags {upcoming} more that are fine today but cross the "
-        f"line at the 90th percentile: {breaching['1 week']} within a week, {breaching['1 month']} within a "
-        f"month, {breaching['3 months']} within three months and {breaching['6 months']} within six. "
-        f"Separately, machines whose six-month demand floor is stable can go on 1-year savings plans for "
+        f"line at the 90th percentile: {breaching['1 month']} within a month, {breaching['3 months']} within "
+        f"three months, {breaching['6 months']} within six and {breaching['12 months']} within a year. "
+        f"Separately, machines whose demand floor holds all year can go on 1-year savings plans for "
         f"about ${fleet['commitment_savings_usd']:,.2f} per month."
     )
     evidence = {
         "machines_total": fleet["covered"],
         "already_over_80_pct_today": breaching["now"],
         "fine_today_but_cross_80_pct": {
-            "within_1_week": breaching["1 week"], "within_1_month": breaching["1 month"],
-            "within_3_months": breaching["3 months"], "within_6_months": breaching["6 months"],
+            "within_1_month": breaching["1 month"], "within_3_months": breaching["3 months"],
+            "within_6_months": breaching["6 months"], "within_12_months": breaching["12 months"],
         },
         "unrelated_saving_from_1_year_savings_plans_usd_per_month": fleet["commitment_savings_usd"],
     }
@@ -339,7 +339,7 @@ def _capacity_route_dict(answer: str, tools: list[str], evidence: dict[str, Any]
 def _capacity_decision(machine: dict[str, Any], decision: dict[str, Any], inv: dict[str, Any],
                        index: int) -> Decision:
     action = decision["action"]
-    urgent = machine["first_breach"] in {"now", "1 week", "1 month"}
+    urgent = machine["first_breach"] in {"now", "1 month"}
     payload = {
         "recommendation_id": f"capacity-{machine['resource']}-{action.lower()}",
         "resource_id": machine["resource"],

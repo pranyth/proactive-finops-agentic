@@ -1,4 +1,4 @@
-"""Generate 24 months of demand history for capacity forecasting.
+"""Generate 36 months of demand history for capacity forecasting.
 
 The operational telemetry (`augmented_vm_metrics.csv`) is 90 days, which can
 neither train nor validate a 3- or 6-month forecast. This writes a separate,
@@ -30,7 +30,7 @@ from generate_fleet_telemetry import ARCHETYPES, REAL_VMS, assign_archetypes, ou
 
 SOURCE = Path("data/augmented_vm_metrics.csv")
 OUTPUT = Path("data/capacity_history.csv")
-DAYS = 730
+DAYS = 1095  # 12-month forecasts need a year to learn, a year to forecast, a year to check
 
 REGIMES_BY_ARCHETYPE = {
     "zombie": ["flat"],

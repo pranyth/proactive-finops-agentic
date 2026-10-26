@@ -1,4 +1,4 @@
-"""Multi-horizon capacity forecasting: 1 week, 1 month, 3 months, 6 months.
+"""Multi-horizon capacity forecasting: 1, 3, 6 and 12 months, the planning cycle.
 
 `agents/forecasting.py` answers "will this machine breach in the next 24
 hours" with a Random Forest over absolute CPU levels. That model cannot answer
@@ -40,7 +40,9 @@ BACKTEST_CSV = Path("research/results/forecasts_synthetic.csv")
 BACKTEST_MODELS = ("rf", "linear", "hybrid_q90")
 CALIBRATION_QUANTILE = 0.9
 
-HORIZONS = {"1 week": 7, "1 month": 30, "3 months": 91, "6 months": 182}
+# Each horizon matches a planning meeting: monthly ops review, quarterly plan,
+# half-year budget, annual budget (and the term of a 1-year savings plan).
+HORIZONS = {"1 month": 30, "3 months": 91, "6 months": 182, "12 months": 365}
 TREND_WINDOW = 365
 MIN_HISTORY = 91
 MIN_TRAIN = 30
@@ -255,7 +257,8 @@ def _build_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
     margins = {h: c["margin"] for h, c in calibration().items()}
     horizons = []
     for label, h in HORIZONS.items():
-        quantiles = (0.1, 0.5, 0.9) if full else (0.1, 0.9) if label == "6 months" else (0.9,)
+        # The fleet table needs p90 everywhere and the p10 that bounds the commitment year.
+        quantiles = (0.1, 0.5, 0.9) if full or label in ("1 month", "12 months") else (0.9,)
         band = quantile_band(s, origin, h, quantiles)
         if band:
             horizons.append({
@@ -267,7 +270,7 @@ def _build_plan(resource_id: str, full: bool = True) -> dict[str, Any]:
             })
     monthly_cost = _monthly_cost(resource_id)
     current_peak = round(float(s.wk[origin]), 1)
-    history = rows.tail(182)
+    history = rows.tail(365)
     plan = {
         "resource": resource_id,
         "archetype": rows["archetype"].iloc[0],
@@ -318,7 +321,7 @@ def _build_calibration() -> dict[int, dict[str, float]]:
     return out
 
 
-def _backtest(resource_id: str, horizon: int = HORIZONS["6 months"]) -> dict[str, Any]:
+def _backtest(resource_id: str, horizon: int = HORIZONS["12 months"]) -> dict[str, Any]:
     df = datacache.load_csv(BACKTEST_CSV)
     if df.empty:
         return {}
@@ -361,28 +364,33 @@ def _decisions(horizons: list[dict[str, Any]], monthly_cost: float,
         out.append({"horizon": "now", "action": "SCALE_UP", "savings_usd": 0.0,
                     "reason": f"Already peaking at {current_peak}% of capacity, over the "
                               f"{BREACH_PCT:.0f}% threshold today. Scale up now."})
-    for label, action, verb in ([] if out else (("1 week", "SCALE_UP", "Scale up now"),
-                                ("1 month", "PLAN_SCALE_UP", "Schedule a capacity increase this month"),
-                                ("3 months", "PLAN_SCALE_UP", "Plan a resize or migration this quarter"),
-                                ("6 months", "PLAN_SCALE_UP", "Budget for more capacity within six months"))):
+    for label, action, verb in ([] if out else (
+            ("1 month", "SCALE_UP", "Scale up before next month's review"),
+            ("3 months", "PLAN_SCALE_UP", "Put a resize or migration on this quarter's plan"),
+            ("6 months", "PLAN_SCALE_UP", "Budget for more capacity in the half-year plan"),
+            ("12 months", "PLAN_SCALE_UP", "Include more capacity in the annual budget"))):
         row = by.get(label)
         if row and row["breach"]:
             out.append({"horizon": label, "action": action, "savings_usd": 0.0,
                         "reason": f"{verb}: p90 demand {row['p90']}% passes the {BREACH_PCT:.0f}% threshold "
                                   f"by {row['date']}."})
             break
-    floor = by.get("6 months")
-    if floor and monthly_cost:
-        if floor["p10"] >= 40:
-            covered = min(floor["p10"], 100.0) / 100.0
-            out.append({"horizon": "6 months", "action": "COMMIT_CAPACITY",
+    # A 1-year contract has to be paid for every month of the year, so the
+    # floor is the lowest p10 across the year, not just its end.
+    year = [by[label] for label in ("1 month", "12 months") if label in by and by[label]["p10"] is not None]
+    if len(year) == 2 and monthly_cost:
+        floor = min(row["p10"] for row in year)
+        ceiling = by["12 months"]["p90"]
+        if floor >= 40:
+            covered = min(floor, 100.0) / 100.0
+            out.append({"horizon": "12 months", "action": "COMMIT_CAPACITY",
                         "savings_usd": round(monthly_cost * covered * COMMITMENT_DISCOUNT, 2),
-                        "reason": f"Demand floor holds at {floor['p10']}% for six months, so a 1-year savings "
-                                  f"plan on that share of the machine is safe."})
-        elif floor["p90"] < 25:
-            out.append({"horizon": "6 months", "action": "AVOID_COMMITMENT", "savings_usd": 0.0,
-                        "reason": f"Six-month demand stays under {floor['p90']}% even at p90; do not commit "
-                                  f"capacity to it — rightsize instead."})
+                        "reason": f"Demand stays above {floor}% all year (p10), so a 1-year savings plan on "
+                                  f"that share of the machine is safe."})
+        elif ceiling < 25:
+            out.append({"horizon": "12 months", "action": "AVOID_COMMITMENT", "savings_usd": 0.0,
+                        "reason": f"Demand stays under {ceiling}% for the next year even at p90; do not "
+                                  f"commit capacity to it — rightsize instead."})
     return out
 
 
@@ -415,6 +423,7 @@ def _build_fleet() -> dict[str, Any]:
     rows.sort(key=lambda r: (order.get(r["first_breach"], 99), -max(r["p90"].values(), default=0)))
     return {
         "machines": rows,
+        "showcase": _showcase(rows),
         "covered": len(rows),
         "horizons": list(HORIZONS),
         "breaching": {label: sum(1 for r in rows if r["first_breach"] == label) for label in ["now", *HORIZONS]},
@@ -423,6 +432,25 @@ def _build_fleet() -> dict[str, Any]:
                  "fleet-wide conformal margin per horizon",
         "calibration": {label: calibration().get(h) for label, h in HORIZONS.items()},
     }
+
+
+def _showcase(rows: list[dict[str, Any]]) -> dict[str, str]:
+    """One machine per story the demo tells, picked by rule from the data."""
+    def first(pred):
+        return next((r["resource"] for r in rows if pred(r)), None)
+
+    picks = {
+        "growing": first(lambda r: r["regime"] in {"linear", "exponential"}
+                         and r["first_breach"] in {"3 months", "6 months", "12 months"})
+        or first(lambda r: r["first_breach"] not in {None, "now"}),
+        "seasonal": first(lambda r: r["regime"] == "quarterly" and r["first_breach"] != "now")
+        or first(lambda r: r["regime"] == "quarterly"),
+        # Never crosses 80% within the year and is safe to commit: the calm machine.
+        "stable": max((r for r in rows if r["first_breach"] is None and r["commitment_savings_usd"] > 0),
+                      key=lambda r: r["commitment_savings_usd"], default={}).get("resource")
+        or first(lambda r: r["commitment_savings_usd"] > 0),
+    }
+    return {story: resource for story, resource in picks.items() if resource}
 
 
 def warm_fleet_capacity() -> None:

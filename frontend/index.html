@@ -232,22 +232,35 @@
       <section class="view" data-view="capacity">
         <div class="section-head">
           <div>
-            <h2>Capacity plan: 1 week to 6 months</h2>
-            <p class="section-sub">A trend line carries each machine's demand forward; a quantile model adds the
-              weekly and seasonal shape around it. Short horizons read the p90 (do not run out), the commitment
-              decision reads the p10 (only commit to what you are sure to use).</p>
+            <h2>Capacity plan: 1, 3, 6 and 12 months</h2>
+            <p class="section-sub">One forecast per planning meeting: the monthly ops review, the quarterly plan,
+              the half-year budget and the annual budget. Warnings read the p90 (do not run out); the 1-year
+              savings-plan decision reads the p10 (only commit to what you are sure to use).</p>
           </div>
           <span class="pill" id="capacity-scope">—</span>
         </div>
 
         <div class="kpi-row" id="capacity-kpis"></div>
-        <p class="safety-note" id="capacity-calibration"></p>
 
         <section class="card">
           <div class="section-head compact">
             <div>
-              <h3>Machines heading past 80% of capacity</h3>
-              <p class="section-sub">p90 forecast of each week's peak demand, as a share of today's machine size.</p>
+              <h3>Plan one machine</h3>
+              <p class="section-sub">Pick a story, or any machine.</p>
+            </div>
+            <label class="sr-only" for="capacity-picker">Resource</label>
+            <select id="capacity-picker"></select>
+          </div>
+          <div class="chip-row" id="capacity-stories"></div>
+          <div id="capacity-detail"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-head compact">
+            <div>
+              <h3>Whole fleet</h3>
+              <p class="section-sub">p90 forecast of each week's peak demand, as a share of today's machine size.
+                Red means past 80%.</p>
             </div>
           </div>
           <div class="table-scroll">
@@ -256,28 +269,17 @@
                 <th scope="col">Resource</th>
                 <th scope="col">Growth</th>
                 <th scope="col" class="num">Peak now</th>
-                <th scope="col" class="num">1 week</th>
                 <th scope="col" class="num">1 month</th>
                 <th scope="col" class="num">3 months</th>
                 <th scope="col" class="num">6 months</th>
+                <th scope="col" class="num">12 months</th>
                 <th scope="col" class="num">Days to 80%</th>
                 <th scope="col">Decision</th>
               </tr></thead>
               <tbody></tbody>
             </table>
           </div>
-        </section>
-
-        <section class="card">
-          <div class="section-head compact">
-            <div>
-              <h3>Forecast band</h3>
-              <p class="section-sub">Last six months of weekly peaks, then the p10–p90 band at each horizon.</p>
-            </div>
-            <label class="sr-only" for="capacity-picker">Resource</label>
-            <select id="capacity-picker"></select>
-          </div>
-          <div id="capacity-detail"></div>
+          <p class="safety-note" id="capacity-calibration"></p>
         </section>
       </section>
 

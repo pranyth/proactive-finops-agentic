@@ -55,7 +55,9 @@ class CapacityModelTests(unittest.TestCase):
         self.assertLessEqual(band[0.5], band[0.9])
 
     def test_commitment_reads_the_floor_not_the_peak(self) -> None:
-        horizons = [{"label": "6 months", "date": "2026-09-01", "p10": 20.0, "p50": 60.0, "p90": 95.0,
+        horizons = [{"label": "1 month", "date": "2026-04-01", "p10": 50.0, "p50": 60.0, "p90": 70.0,
+                     "breach": False},
+                    {"label": "12 months", "date": "2027-03-01", "p10": 20.0, "p50": 60.0, "p90": 95.0,
                      "breach": True}]
         actions = [d["action"] for d in capacity._decisions(horizons, monthly_cost=500.0)]
         self.assertIn("PLAN_SCALE_UP", actions)
@@ -64,7 +66,7 @@ class CapacityModelTests(unittest.TestCase):
 
 
     def test_already_over_is_not_reported_as_a_forecast(self) -> None:
-        horizons = [{"label": "1 week", "date": "2026-03-21", "p10": 85.0, "p50": 90.0, "p90": 95.0, "breach": True}]
+        horizons = [{"label": "1 month", "date": "2026-04-13", "p10": 85.0, "p50": 90.0, "p90": 95.0, "breach": True}]
         decisions = capacity._decisions(horizons, monthly_cost=0.0, current_peak=92.0)
         self.assertEqual([(d["horizon"], d["action"]) for d in decisions], [("now", "SCALE_UP")])
 

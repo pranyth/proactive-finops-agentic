@@ -648,10 +648,10 @@ async function loadCapacity() {
   const b = data.breaching;
   $("#capacity-kpis").innerHTML = [
     kpi("Over 80% today", b.now, "not a forecast: act now"),
-    kpi("Cross within 1 week", b["1 week"], "fine today, p90 says no"),
-    kpi("Cross within 1 month", b["1 month"], "schedule an increase"),
-    kpi("Cross in 3–6 months", b["3 months"] + b["6 months"], "plan and budget for it"),
-    kpi("Safe commitments", money(data.commitment_savings_usd), "per month, from the p10 floor", "good"),
+    kpi("Cross within 1 month", b["1 month"], "before the next ops review"),
+    kpi("Cross within 3 months", b["3 months"], "this quarter's plan"),
+    kpi("Cross in 6–12 months", b["6 months"] + b["12 months"], "half-year and annual budget"),
+    kpi("Safe 1-year commitments", money(data.commitment_savings_usd * 12), "per year, from the p10 floor", "good"),
   ].join("");
 
   const cell = (v) => `<td class="num${v >= 80 ? " is-hot" : ""}">${v == null ? "—" : pct(v)}</td>`;
@@ -664,7 +664,7 @@ async function loadCapacity() {
       <td>${esc(m.resource)}</td>
       <td>${esc(m.regime)}</td>
       <td class="num">${pct(m.current_peak)}</td>
-      ${cell(m.p90["1 week"])}${cell(m.p90["1 month"])}${cell(m.p90["3 months"])}${cell(m.p90["6 months"])}
+      ${cell(m.p90["1 month"])}${cell(m.p90["3 months"])}${cell(m.p90["6 months"])}${cell(m.p90["12 months"])}
       <td class="num">${m.first_breach === "now" ? "now" : m.days_to_breach == null ? "—" : m.days_to_breach}</td>
       <td>${decision}</td>
     </tr>`;
@@ -673,23 +673,67 @@ async function loadCapacity() {
   const picker = $("#capacity-picker");
   picker.innerHTML = data.machines
     .map((m) => `<option value="${esc(m.resource)}">${esc(m.resource)}</option>`).join("");
+  const stories = Object.entries(STORIES).filter(([key]) => data.showcase[key]);
+  $("#capacity-stories").innerHTML = stories.map(([key, story]) =>
+    `<button class="chip" type="button" data-story="${key}">${esc(story.label)}</button>`).join("");
+  $$("#capacity-stories .chip").forEach((chip) =>
+    chip.addEventListener("click", () => showStory(chip.dataset.story)));
   // Open on a machine the forecast is warning about, not one already over the line.
-  const upcoming = data.machines.find((m) => m.first_breach && m.first_breach !== "now") || data.machines[0];
-  picker.value = upcoming.resource;
-  loadCapacityDetail(upcoming.resource);
+  if (stories.length) showStory(stories[0][0]);
+  else loadCapacityDetail(data.machines[0].resource);
 }
 
-async function loadCapacityDetail(resourceId) {
+const STORIES = {
+  growing: { label: "Growing workload", caption: "Fine today, growing every month. When does it run out, and which meeting has to act?" },
+  seasonal: { label: "Seasonal workload", caption: "Spikes every quarter-end. Plan for the spike, not the average." },
+  stable: { label: "Stable workload", caption: "Flat and predictable. Is it safe to lock it into a 1-year savings plan?" },
+};
+
+function showStory(key) {
+  const resource = state.capacity.showcase[key];
+  $$("#capacity-stories .chip").forEach((chip) => chip.classList.toggle("is-active", chip.dataset.story === key));
+  $("#capacity-picker").value = resource;
+  loadCapacityDetail(resource, STORIES[key].caption);
+}
+
+const MEETINGS = {
+  "1 month": ["Monthly ops review", "Scale up before the next review"],
+  "3 months": ["Quarterly plan", "Put a resize on this quarter's plan"],
+  "6 months": ["Half-year budget", "Budget for more capacity"],
+  "12 months": ["Annual budget", "Add capacity to next year's budget"],
+};
+
+function planTimeline(d) {
+  const today = `<div class="plan-step${d.over_now ? " is-warn" : ""}">
+    <small>Today</small><strong>${pct(d.current_peak)}</strong><em>this week's peak</em>
+    <span class="status">${d.over_now ? "▲ Over 80% now" : "✓ Below 80%"}</span>
+    <p class="action">${d.over_now ? "Scale up now. This is not a forecast." : "Nothing to do today."}</p></div>`;
+  const commit = d.decisions.find((x) => x.horizon === "12 months");
+  const steps = d.horizons.map((row) => {
+    const [meeting, verb] = MEETINGS[row.label] || [row.label, "Plan for it"];
+    let action = row.breach ? verb : "No change needed.";
+    if (row.label === "12 months" && commit) {
+      action += commit.action === "COMMIT_CAPACITY"
+        ? ` Lock the floor into a 1-year savings plan: saves ${moneyExact(commit.savings_usd * 12)}/year.`
+        : " Don't commit: demand is too low to be worth a contract.";
+    }
+    return `<div class="plan-step${row.breach ? " is-warn" : ""}">
+      <small>${esc(row.label)} · ${esc(meeting)}</small><strong>${pct(row.p50)}</strong>
+      <em>likely range ${pct(row.p10)} – ${pct(row.p90)}</em>
+      <span class="status">${row.breach ? "▲ Passes 80%" : "✓ Stays under 80%"}</span>
+      <p class="action">${esc(action)}</p></div>`;
+  }).join("");
+  return `<div class="plan-timeline">${today}${steps}</div>`;
+}
+
+async function loadCapacityDetail(resourceId, caption = "") {
   const target = $("#capacity-detail");
   target.innerHTML = `<p class="empty">Loading ${esc(resourceId)}…</p>`;
   try {
     const d = await api(`/api/capacity/${encodeURIComponent(resourceId)}`);
     target.innerHTML = `
-      <div class="metric-grid" style="margin-bottom:18px">
-        ${d.horizons.map((row) => `<div><small>${esc(row.label)} (${esc(row.date)})</small>
-          <strong>${pct(row.p50)}</strong><em>p10 ${pct(row.p10)} · p90 ${pct(row.p90)}</em>
-          <em>model said ${pct(row.p90_model)}, widened by its track record</em></div>`).join("")}
-      </div>
+      ${caption ? `<p class="story-caption">${esc(caption)}</p>` : ""}
+      ${planTimeline(d)}
       ${fanChart(d)}
       ${backtestChart(d.backtest)}
       ${d.decisions.map((x) => `<p class="safety-note"><strong>${esc(x.action.replaceAll("_", " "))}</strong> · ${esc(x.reason)}${x.savings_usd ? ` Saves ${moneyExact(x.savings_usd)}/month.` : ""}</p>`).join("")}
@@ -723,7 +767,7 @@ function backtestChart(bt) {
   const lines = BACKTEST_LINES.map(([k, , color, dash]) =>
     `<path d="${path(bt.models[k])}" style="fill:none;stroke:${color};stroke-width:2;stroke-dasharray:${dash || "none"}" />`).join("");
   return `
-    <h4 style="margin:22px 0 4px">Proof: what each model said six months before</h4>
+    <h4 style="margin:22px 0 4px">Proof: what each model said ${bt.horizon_days >= 365 ? "a year" : `${bt.horizon_days} days`} before</h4>
     <p class="section-sub">Every point is a forecast made ${bt.horizon_days} days before that date, trained only on data
       up to the day it was made. ${bt.beyond_history} of these ${bt.dates.length} weeks went higher than anything the
       model had seen.</p>
@@ -742,7 +786,7 @@ function backtestChart(bt) {
 function fanChart(d) {
   const hist = d.history.weekly_peak;
   const w = 720, h = 220, padL = 34, padR = 10, padT = 12, padB = 22;
-  const lastDay = 182;
+  const lastDay = Math.max(...d.horizons.map((r) => r.days));
   const span = hist.length + lastDay;
   const x = (day) => padL + ((day + hist.length - 1) / (span - 1)) * (w - padL - padR);
   const values = hist.concat(d.horizons.flatMap((r) => [r.p10, r.p90]), [d.breach_threshold]);
@@ -910,7 +954,10 @@ function initEvents() {
 
   $("#resource-picker").addEventListener("change", (event) => loadResource(event.target.value));
   $("#forecast-picker").addEventListener("change", (event) => loadForecastDetail(event.target.value));
-  $("#capacity-picker").addEventListener("change", (event) => loadCapacityDetail(event.target.value));
+  $("#capacity-picker").addEventListener("change", (event) => {
+    $$("#capacity-stories .chip").forEach((chip) => chip.classList.remove("is-active"));
+    loadCapacityDetail(event.target.value);
+  });
   $("#run-events").addEventListener("click", runEventDemo);
 }
 

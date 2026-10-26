@@ -26,7 +26,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from agents.capacity import HORIZONS, Series, forecast  # noqa: E402
+from agents.capacity import ALL_MODELS, HORIZONS, Series, forecast  # noqa: E402
 
 RESULTS = Path("research/results")
 SYNTHETIC = Path("data/capacity_history.csv")
@@ -68,12 +68,12 @@ def _get(dataset: str, name: str) -> tuple[Series, pd.DataFrame, str]:
     return _SERIES[key]
 
 
-def run_task(task: tuple[str, str, int, list[int]]) -> list[dict]:
-    dataset, name, h, origins = task
+def run_task(task: tuple) -> list[dict]:
+    dataset, name, h, origins, models = task
     s, frame, regime = _get(dataset, name)
     rows = []
     for origin in origins:
-        predictions = forecast(s, origin, h)
+        predictions = forecast(s, origin, h, models)
         if not predictions:
             continue
         rows.append({
@@ -90,13 +90,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--dataset", choices=sorted(SCHEDULE), action="append")
+    parser.add_argument("--step", type=int, help="days between origins (default per dataset)")
+    parser.add_argument("--models", help="comma-separated subset, e.g. the console's rf,linear,hybrid_q90")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     args = parser.parse_args()
 
+    models = tuple(args.models.split(",")) if args.models else ALL_MODELS
     datasets = {k: v for k, v in load_datasets().items() if v and (not args.dataset or k in args.dataset)}
     tasks = []
     for dataset, series in datasets.items():
         first, step = SCHEDULE[dataset]
+        step = args.step or step
         names = sorted(series)[:6] if args.quick else sorted(series)
         for name in names:
             n = len(series[name][0])
@@ -104,7 +108,7 @@ def main() -> None:
                 origins = list(range(first, n - h, step))
                 # Chunk so the pool stays busy when a dataset has few, long series.
                 for i in range(0, len(origins), 8):
-                    tasks.append((dataset, name, h, origins[i:i + 8]))
+                    tasks.append((dataset, name, h, origins[i:i + 8], models))
     print(f"{len(tasks)} tasks over {sum(len(v) for v in datasets.values())} series, {args.workers} workers")
 
     rows = []
