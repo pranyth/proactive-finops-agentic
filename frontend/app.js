@@ -642,23 +642,19 @@ async function loadCapacity() {
   $("#capacity-scope").textContent = `${data.covered} machines`;
   const cal = Object.entries(data.calibration || {}).filter(([, c]) => c)
     .map(([label, c]) => `${label}: +${c.margin} pts (model alone covered ${c.model_coverage_pct}%)`).join(" · ");
-  $("#capacity-calibration").textContent = cal
-    ? `The model's own 90% line was too optimistic in testing, so each is widened by how far it missed before. ${cal}.`
-    : "";
+  $("#capacity-calibration").textContent = "";
   const b = data.breaching;
   $("#capacity-kpis").innerHTML = [
-    kpi("Over 80% today", b.now, "not a forecast: act now"),
-    kpi("Cross within 1 month", b["1 month"], "before the next ops review"),
-    kpi("Cross within 3 months", b["3 months"], "this quarter's plan"),
-    kpi("Cross in 6–12 months", b["6 months"] + b["12 months"], "half-year and annual budget"),
-    kpi("Safe 1-year commitments", money(data.commitment_savings_usd * 12), "per year, from the p10 floor", "good"),
+    kpi("Full right now", b.now, "add capacity today"),
+    kpi("Will get full this year", b["1 month"] + b["3 months"] + b["6 months"] + b["12 months"], "fine today, plan ahead"),
+    kpi("Can save per year", money(data.commitment_savings_usd * 12), "with 1-year discount deals", "good"),
   ].join("");
 
   const cell = (v) => `<td class="num${v >= 80 ? " is-hot" : ""}">${v == null ? "—" : pct(v)}</td>`;
   target.innerHTML = data.machines.map((m) => {
     const d = m.decisions[0];
     const decision = d
-      ? `<span class="cell-action"><i class="status-dot tone-${toneFor(d.action)}"></i>${esc(d.action.replaceAll("_", " ").toLowerCase())}</span>`
+      ? `<span class="cell-action"><i class="status-dot tone-${toneFor(d.action)}"></i>${esc(PLAIN_ACTIONS[d.action] || d.action)}</span>`
       : `<span class="muted">no change</span>`;
     return `<tr>
       <td>${esc(m.resource)}</td>
@@ -683,10 +679,14 @@ async function loadCapacity() {
   else loadCapacityDetail(data.machines[0].resource);
 }
 
+const PLAIN_ACTIONS = {
+  SCALE_UP: "Add capacity now", PLAN_SCALE_UP: "Plan more capacity",
+  COMMIT_CAPACITY: "Save with a 1-year deal", AVOID_COMMITMENT: "Too quiet for a deal",
+};
+
 const STORIES = {
-  growing: { label: "Growing workload", caption: "Fine today, growing every month. When does it run out, and which meeting has to act?" },
-  seasonal: { label: "Seasonal workload", caption: "Spikes every quarter-end. Plan for the spike, not the average." },
-  stable: { label: "Stable workload", caption: "Flat and predictable. Is it safe to lock it into a 1-year savings plan?" },
+  growing: { label: "Example: growing server", caption: "" },
+  stable: { label: "Example: steady server", caption: "" },
 };
 
 function showStory(key) {
@@ -696,34 +696,31 @@ function showStory(key) {
   loadCapacityDetail(resource, STORIES[key].caption);
 }
 
-const MEETINGS = {
-  "1 month": ["Monthly ops review", "Scale up before the next review"],
-  "3 months": ["Quarterly plan", "Put a resize on this quarter's plan"],
-  "6 months": ["Half-year budget", "Budget for more capacity"],
-  "12 months": ["Annual budget", "Add capacity to next year's budget"],
-};
+function planHeadline(d) {
+  const first = d.horizons.find((row) => row.breach);
+  const commit = d.decisions.find((x) => x.action === "COMMIT_CAPACITY");
+  let line;
+  if (d.over_now) line = `<b>${esc(d.resource)}</b> is already too full. Add capacity now.`;
+  else if (first) line = `<b>${esc(d.resource)}</b> is fine today, but <b>will be too full in about ${esc(first.label)}</b>. Plan more capacity before then.`;
+  else line = `<b>${esc(d.resource)}</b> will stay fine for the next 12 months.`;
+  if (commit) line += ` Its usage is steady, so a 1-year discount deal <b>saves ${moneyExact(commit.savings_usd * 12)} a year</b>.`;
+  return `<p style="font-size:17px;line-height:1.5;margin:4px 0 16px">${line}</p>`;
+}
 
 function planTimeline(d) {
-  const today = `<div class="plan-step${d.over_now ? " is-warn" : ""}">
-    <small>Today</small><strong>${pct(d.current_peak)}</strong><em>this week's peak</em>
-    <span class="status">${d.over_now ? "▲ Over 80% now" : "✓ Below 80%"}</span>
-    <p class="action">${d.over_now ? "Scale up now. This is not a forecast." : "Nothing to do today."}</p></div>`;
-  const commit = d.decisions.find((x) => x.horizon === "12 months");
-  const steps = d.horizons.map((row) => {
-    const [meeting, verb] = MEETINGS[row.label] || [row.label, "Plan for it"];
-    let action = row.breach ? verb : "No change needed.";
-    if (row.label === "12 months" && commit) {
-      action += commit.action === "COMMIT_CAPACITY"
-        ? ` Lock the floor into a 1-year savings plan: saves ${moneyExact(commit.savings_usd * 12)}/year.`
-        : " Don't commit: demand is too low to be worth a contract.";
-    }
-    return `<div class="plan-step${row.breach ? " is-warn" : ""}">
-      <small>${esc(row.label)} · ${esc(meeting)}</small><strong>${pct(row.p50)}</strong>
-      <em>likely range ${pct(row.p10)} – ${pct(row.p90)}</em>
-      <span class="status">${row.breach ? "▲ Passes 80%" : "✓ Stays under 80%"}</span>
-      <p class="action">${esc(action)}</p></div>`;
-  }).join("");
-  return `<div class="plan-timeline">${today}${steps}</div>`;
+  const box = (title, value, full) => `<div class="plan-step${full ? " is-warn" : ""}">
+    <small>${esc(title)}</small><strong>${pct(value)}</strong>
+    <span class="status">${full ? "▲ Too full" : "✓ OK"}</span></div>`;
+  return `<div class="plan-timeline">${box("Today", d.current_peak, d.over_now)}${
+    d.horizons.map((row) => box(`In ${row.label}`, row.p90, row.breach)).join("")}</div>
+    <p class="section-sub" style="margin:-8px 0 14px">How full the server gets at its busiest. Over 80% = too full.</p>`;
+}
+
+function proofLine(bt) {
+  if (!bt || !bt.mae) return "";
+  return `<p class="safety-note"><b>Does it work?</b> We checked forecasts made a year ago against what really
+    happened. Our model was off by <b>${bt.mae.hybrid_q90} points</b> on average; the usual model
+    (Random Forest) was off by <b>${bt.mae.rf}</b>.</p>`;
 }
 
 async function loadCapacityDetail(resourceId, caption = "") {
@@ -732,13 +729,11 @@ async function loadCapacityDetail(resourceId, caption = "") {
   try {
     const d = await api(`/api/capacity/${encodeURIComponent(resourceId)}`);
     target.innerHTML = `
-      ${caption ? `<p class="story-caption">${esc(caption)}</p>` : ""}
+      ${planHeadline(d)}
       ${planTimeline(d)}
       ${fanChart(d)}
-      ${backtestChart(d.backtest)}
-      ${d.decisions.map((x) => `<p class="safety-note"><strong>${esc(x.action.replaceAll("_", " "))}</strong> · ${esc(x.reason)}${x.savings_usd ? ` Saves ${moneyExact(x.savings_usd)}/month.` : ""}</p>`).join("")}
-      <p class="safety-note">${esc(d.regime)} growth · trend ${d.trend_per_month >= 0 ? "+" : ""}${d.trend_per_month} pts/month
-        · as of ${esc(d.as_of)} · ${moneyExact(d.monthly_cost_usd)}/month today.</p>`;
+      ${proofLine(d.backtest)}
+`;
   } catch (error) {
     target.innerHTML = `<p class="empty">Could not load ${esc(resourceId)}: ${esc(error.message)}</p>`;
   }
@@ -813,10 +808,9 @@ function fanChart(d) {
       <path class="line-predicted" d="${line(pts("p50"))}" />
     </svg>
     <div class="legend">
-      <span><i style="background:var(--series-1)"></i>Weekly peak (actual)</span>
-      <span><i style="background:var(--series-2)"></i>Forecast median</span>
-      <span><i style="background:var(--series-2);opacity:.3"></i>p10–p90 band</span>
-      <span><i class="legend-dash"></i>${d.breach_threshold}% of capacity</span>
+      <span><i style="background:var(--series-1)"></i>Past</span>
+      <span><i style="background:var(--series-2)"></i>Forecast</span>
+      <span><i class="legend-dash"></i>Too full (80%)</span>
     </div>`;
 }
 

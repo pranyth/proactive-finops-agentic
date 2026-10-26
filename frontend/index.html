@@ -232,10 +232,8 @@
       <section class="view" data-view="capacity">
         <div class="section-head">
           <div>
-            <h2>Capacity plan: 1, 3, 6 and 12 months</h2>
-            <p class="section-sub">One forecast per planning meeting: the monthly ops review, the quarterly plan,
-              the half-year budget and the annual budget. Warnings read the p90 (do not run out); the 1-year
-              savings-plan decision reads the p10 (only commit to what you are sure to use).</p>
+            <h2>Will our servers run out of room?</h2>
+            <p class="section-sub">We predict how full each server will be in 1, 3, 6 and 12 months.</p>
           </div>
           <span class="pill" id="capacity-scope">—</span>
         </div>
@@ -245,8 +243,7 @@
         <section class="card">
           <div class="section-head compact">
             <div>
-              <h3>Plan one machine</h3>
-              <p class="section-sub">Pick a story, or any machine.</p>
+              <h3>Check a server</h3>
             </div>
             <label class="sr-only" for="capacity-picker">Resource</label>
             <select id="capacity-picker"></select>
@@ -258,23 +255,22 @@
         <section class="card">
           <div class="section-head compact">
             <div>
-              <h3>Whole fleet</h3>
-              <p class="section-sub">p90 forecast of each week's peak demand, as a share of today's machine size.
-                Red means past 80%.</p>
+              <h3>All servers</h3>
+              <p class="section-sub">Red = too full (over 80%).</p>
             </div>
           </div>
           <div class="table-scroll">
             <table class="data-table" id="capacity-table">
               <thead><tr>
                 <th scope="col">Resource</th>
-                <th scope="col">Growth</th>
-                <th scope="col" class="num">Peak now</th>
+                <th scope="col">Pattern</th>
+                <th scope="col" class="num">Today</th>
                 <th scope="col" class="num">1 month</th>
                 <th scope="col" class="num">3 months</th>
                 <th scope="col" class="num">6 months</th>
                 <th scope="col" class="num">12 months</th>
-                <th scope="col" class="num">Days to 80%</th>
-                <th scope="col">Decision</th>
+                <th scope="col" class="num">Days until full</th>
+                <th scope="col">What to do</th>
               </tr></thead>
               <tbody></tbody>
             </table>
