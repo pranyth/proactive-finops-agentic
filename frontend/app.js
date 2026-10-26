@@ -650,7 +650,7 @@ async function loadCapacity() {
     kpi("Can save per year", money(data.commitment_savings_usd * 12), "with 1-year discount deals", "good"),
   ].join("");
 
-  const cell = (v) => `<td class="num${v >= 80 ? " is-hot" : ""}">${v == null ? "—" : pct(v)}</td>`;
+  const cell = (v) => `<td class="num${v >= 80 ? " is-hot" : ""}">${v == null ? "—" : load(v)}</td>`;
   target.innerHTML = data.machines.map((m) => {
     const d = m.decisions[0];
     const decision = d
@@ -659,7 +659,7 @@ async function loadCapacity() {
     return `<tr>
       <td>${esc(m.resource)}</td>
       <td>${esc(m.regime)}</td>
-      <td class="num">${pct(m.current_peak)}</td>
+      <td class="num">${load(m.current_peak)}</td>
       ${cell(m.p90["1 month"])}${cell(m.p90["3 months"])}${cell(m.p90["6 months"])}${cell(m.p90["12 months"])}
       <td class="num">${m.first_breach === "now" ? "now" : m.days_to_breach == null ? "—" : m.days_to_breach}</td>
       <td>${decision}</td>
@@ -707,9 +707,14 @@ function planHeadline(d) {
   return `<p style="font-size:17px;line-height:1.5;margin:4px 0 16px">${line}</p>`;
 }
 
+// Demand is measured against today's server size, so it can pass 100%: the
+// server is maxed out and the rest of the work queues. Say that, not "125%".
+const load = (v) => (v >= 100 ? "Maxed out" : pct(v));
+const loadHint = (v) => (v >= 100 ? `<em>needs ~${(v / 100).toFixed(1)}× this server</em>` : "");
+
 function planTimeline(d) {
   const box = (title, value, full) => `<div class="plan-step${full ? " is-warn" : ""}">
-    <small>${esc(title)}</small><strong>${pct(value)}</strong>
+    <small>${esc(title)}</small><strong>${load(value)}</strong>${loadHint(value)}
     <span class="status">${full ? "▲ Too full" : "✓ OK"}</span></div>`;
   return `<div class="plan-timeline">${box("Today", d.current_peak, d.over_now)}${
     d.horizons.map((row) => box(`In ${row.label}`, row.p90, row.breach)).join("")}</div>
