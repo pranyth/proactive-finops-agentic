@@ -26,8 +26,8 @@ class CapacityModelTests(unittest.TestCase):
     def test_training_targets_never_pass_the_origin(self) -> None:
         s = growing_series()
         for h in capacity.HORIZONS.values():
-            train = training_set(s, 400, h)
-            self.assertLessEqual(train.max() + h, 400)
+            train = training_set(s, 500, h)
+            self.assertLessEqual(train.max() + h, 500)
 
     def test_trend_only_sees_the_past(self) -> None:
         s = growing_series()
