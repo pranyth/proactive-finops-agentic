@@ -14,6 +14,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from agents import capacity
 from agents.analyst import FinOpsAnalystAgent
 from agents.core import action_label, action_tone, infra_lambda_function
 from ai_finops.analyst import AIFinOpsAnalystAgent
@@ -22,11 +23,13 @@ from ai_finops.llm import LLMReasoner
 INFRASTRUCTURE = "infrastructure"
 AI_SERVICES = "ai_services"
 BOTH = "all"
+CAPACITY = "capacity"
 
 DOMAIN_LABELS = {
     INFRASTRUCTURE: "Infrastructure",
     AI_SERVICES: "AI services",
     BOTH: "Whole estate",
+    CAPACITY: "Capacity plan",
 }
 
 # Routing vocabulary. Multi-word phrases are matched first so "scale up" is not
@@ -54,6 +57,17 @@ AI_TERMS = [
     "ai workloads", "caching", "cache",
 ]
 
+# A question about the future goes to the capacity forecaster, whatever else it
+# mentions: "which VMs will run out of CPU in 3 months" is a forecast, not a
+# rightsizing question.
+FORECAST_TERMS = [
+    "forecast", "forecasts", "predict", "predicted", "prediction", "projected", "projection",
+    "next week", "next month", "next quarter", "next year", "coming months", "1 week", "one week",
+    "1 month", "one month", "3 months", "three months", "6 months", "six months", "12 months", "twelve months", "1 year", "one year", "run out",
+    "running out", "will need", "capacity plan", "capacity planning", "growth", "trend", "trending",
+    "savings plan", "reserved instance", "reserved instances", "commit", "commitment", "commitments",
+]
+
 # Offered to the user as starting points. Each one is a question the router can
 # answer well, so the chips double as documentation of what the agent knows.
 SUGGESTIONS = [
@@ -66,6 +80,8 @@ SUGGESTIONS = [
     {"label": "Smaller model candidates", "question": "Which workloads can use a smaller model?", "domain": AI_SERVICES},
     {"label": "Token waste", "question": "Where are we wasting input or output tokens?", "domain": AI_SERVICES},
     {"label": "AI quality risk", "question": "Which AI workloads have quality risk?", "domain": AI_SERVICES},
+    {"label": "Running out of capacity", "question": "Which machines will run out of capacity in the next 3 months?", "domain": CAPACITY},
+    {"label": "Safe commitments", "question": "Where is it safe to commit to a 1-year savings plan?", "domain": CAPACITY},
     {"label": "Total savings available", "question": "Where can we save the most money across the estate?", "domain": BOTH},
     {"label": "What runs automatically", "question": "What will AWS Lambda do with an approved recommendation?", "domain": BOTH},
 ]
@@ -104,6 +120,8 @@ class Decision:
 def classify_domain(question: str) -> str:
     """Route on keyword evidence; an ambiguous or generic question hits both."""
     text = question.lower()
+    if _score(text, FORECAST_TERMS):
+        return CAPACITY
     infra = _score(text, INFRA_TERMS)
     ai = _score(text, AI_TERMS)
     if infra and infra > ai:
@@ -133,41 +151,62 @@ class UnifiedFinOpsAgent:
     def ask(self, question: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         context = context or {}
         requested = (context.get("domain") or "auto").lower()
-        domain = requested if requested in {INFRASTRUCTURE, AI_SERVICES, BOTH} else classify_domain(question)
+        domain = requested if requested in DOMAIN_LABELS else classify_domain(question)
 
         routes: list[dict[str, Any]] = []
         decisions: list[Decision] = []
 
+        explain = bool(context.get("explain", True))
+        # A whole-estate question is summarised once at the end, so the analysts
+        # run in evidence mode and the single LLM call is spent on the headline.
+        explain_route = explain and domain != BOTH
+
         if domain in {INFRASTRUCTURE, BOTH}:
-            answer = self.infra.run(question, {"time_window": context.get("time_window", "latest_48h")})
+            answer = self.infra.run(question, {
+                "time_window": context.get("time_window", "latest_48h"),
+                "explain": explain_route,
+            })
             rows = [_infra_decision(row, index) for index, row in enumerate(answer.recommendations)]
             decisions.extend(row for row in rows if row is not None)
             routes.append(_route(INFRASTRUCTURE, answer))
 
-        explain = bool(context.get("explain", True))
         if domain in {AI_SERVICES, BOTH}:
             answer = self.ai.run(question, {
                 "time_window": context.get("time_window", "latest_30d"),
                 "provider": "all",
-                "explain": explain,
+                "explain": explain_route,
             })
             decisions.extend(_ai_decision(row, index) for index, row in enumerate(answer.recommendations))
             routes.append(_route(AI_SERVICES, answer))
 
-        decisions.sort(key=lambda item: (item.savings_usd, item.confidence), reverse=True)
+        if domain == CAPACITY:
+            route, rows = _capacity_route(question, explain)
+            routes.append(route)
+            # Already ordered by urgency; a scale-up saves nothing but outranks any commitment.
+            decisions.extend(rows)
+        else:
+            decisions.sort(key=lambda item: (item.savings_usd, item.confidence), reverse=True)
         totals = _totals(decisions)
+        headline, headline_mode = _headline(domain, routes, totals, question, explain)
+        tools = _dedupe(tool for route in routes for tool in route["tools_used"])
+        if domain == BOTH and headline_mode == "llm":
+            # The analysts ran in evidence mode for a merged question; the model
+            # wrote the paragraph the user actually reads, so label it that way.
+            tools = [t for t in tools if t != "Evidence Explanation Fallback"]
+            if "LLM Explanation Service" not in tools:
+                tools.append("LLM Explanation Service")
 
         return {
             "question": question,
             "domain": domain,
             "domain_label": DOMAIN_LABELS[domain],
-            "routing": "explicit" if requested in {INFRASTRUCTURE, AI_SERVICES, BOTH} else "auto",
-            "answer": _headline(domain, routes, totals),
+            "routing": "explicit" if requested in DOMAIN_LABELS else "auto",
+            "answer": headline,
             "intent": "+".join(route["intent"] for route in routes),
             "decisions": [decision.to_dict() for decision in decisions],
             "totals": totals,
             "routes": routes,
-            "tools_used": _dedupe(tool for route in routes for tool in route["tools_used"]),
+            "tools_used": tools,
             "next_action": routes[0]["next_action"] if routes else "",
             "requirement_check": [row for route in routes for row in route["requirement_check"]],
             "suggestions": suggestions_for(domain),
@@ -200,7 +239,10 @@ def _route(domain: str, answer: Any) -> dict[str, Any]:
 def _totals(decisions: list[Decision]) -> dict[str, Any]:
     infra = [item for item in decisions if item.domain == INFRASTRUCTURE]
     ai = [item for item in decisions if item.domain == AI_SERVICES]
+    planned = [item for item in decisions if item.domain == CAPACITY]
     return {
+        "capacity_decisions": len(planned),
+        "capacity_savings_usd": round(sum(item.savings_usd for item in planned), 2),
         "decisions": len(decisions),
         "savings_usd": round(sum(item.savings_usd for item in decisions), 2),
         "infrastructure_decisions": len(infra),
@@ -210,22 +252,133 @@ def _totals(decisions: list[Decision]) -> dict[str, Any]:
     }
 
 
-def _headline(domain: str, routes: list[dict[str, Any]], totals: dict[str, Any]) -> str:
+def _headline(domain: str, routes: list[dict[str, Any]], totals: dict[str, Any],
+              question: str = "", explain: bool = True) -> tuple[str, str]:
     """The lead paragraph only.
 
     When a question spans both domains the per-analyst wording stays on its own
     route so the console can show it as a labelled breakdown, rather than three
-    paragraphs concatenated into one wall of text.
+    paragraphs concatenated into one wall of text. A single-domain question is
+    already worded by its analyst; only the merged case needs writing here.
     """
     if not routes:
-        return "I could not route that question to an analyst."
+        return "I could not route that question to an analyst.", "none"
     if domain != BOTH:
-        return routes[0]["answer"]
-    return (
+        mode = "llm" if "LLM Explanation Service" in routes[0]["tools_used"] else "evidence_policy_fallback"
+        return routes[0]["answer"], mode
+    baseline = (
         f"Across the whole estate I found {totals['decisions']} decisions worth about "
         f"${totals['savings_usd']:,.2f} per month — ${totals['infrastructure_savings_usd']:,.2f} from "
         f"{totals['infrastructure_decisions']} infrastructure changes and "
         f"${totals['ai_savings_usd']:,.2f} from {totals['ai_decisions']} AI-service changes."
+    )
+    if not explain:
+        return baseline, "evidence_policy_fallback"
+    evidence = {
+        "totals": totals,
+        "per_domain": [
+            {"domain": route["domain_label"], "finding": route["answer"]} for route in routes
+        ],
+    }
+    result = LLMReasoner().explain(question, evidence, baseline)
+    return result.text, result.mode
+
+
+def _capacity_route(question: str, explain: bool) -> tuple[dict[str, Any], list[Decision]]:
+    """Forecast every machine 1 to 12 months out and turn the bands into decisions."""
+    tools = ["Capacity Forecaster (trend + quantile boosting)", "Decision Mapper"]
+    if capacity.is_warming():
+        answer = "The capacity models are still training; ask again in a minute."
+        return _capacity_route_dict(answer, tools, {}), []
+    fleet = capacity.fleet_capacity()
+    inventory = capacity.inventory()
+    decisions = [
+        _capacity_decision(machine, decision, inventory.get(machine["resource"], {}), index)
+        for index, (machine, decision) in enumerate(
+            (machine, decision) for machine in fleet["machines"] for decision in machine["decisions"])
+    ]
+    # A commitment question leads with commitments; anything else leads with risk.
+    wants_commitments = _score(question.lower(), ["commit", "commitment", "savings plan", "reserved instance",
+                                                  "reserved instances"]) > 0
+    decisions.sort(key=lambda d: (d.action == "COMMIT_CAPACITY") != wants_commitments)
+    breaching = fleet["breaching"]
+    upcoming = sum(v for k, v in breaching.items() if k != "now")
+    baseline = (
+        f"{breaching['now']} of {fleet['covered']} machines are already over {capacity.BREACH_PCT:.0f}% of "
+        f"capacity and need scaling now. The forecast flags {upcoming} more that are fine today but cross the "
+        f"line at the 90th percentile: {breaching['1 month']} within a month, {breaching['3 months']} within "
+        f"three months, {breaching['6 months']} within six and {breaching['12 months']} within a year. "
+        f"Separately, machines whose demand floor holds all year can go on 1-year savings plans for "
+        f"about ${fleet['commitment_savings_usd']:,.2f} per month."
+    )
+    evidence = {
+        "machines_total": fleet["covered"],
+        "already_over_80_pct_today": breaching["now"],
+        "fine_today_but_cross_80_pct": {
+            "within_1_month": breaching["1 month"], "within_3_months": breaching["3 months"],
+            "within_6_months": breaching["6 months"], "within_12_months": breaching["12 months"],
+        },
+        "unrelated_saving_from_1_year_savings_plans_usd_per_month": fleet["commitment_savings_usd"],
+    }
+    answer, mode = baseline, "evidence_policy_fallback"
+    if explain:
+        result = LLMReasoner().explain(question, evidence, baseline)
+        answer, mode = result.text, result.mode
+    tools.append("LLM Explanation Service" if mode == "llm" else "Evidence Explanation Fallback")
+    return _capacity_route_dict(answer, tools, evidence), decisions
+
+
+def _capacity_route_dict(answer: str, tools: list[str], evidence: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "domain": CAPACITY, "domain_label": DOMAIN_LABELS[CAPACITY], "intent": "capacity_forecast",
+        "answer": answer, "tools_used": tools, "evidence": evidence, "requirement_check": [],
+        "next_action": "Open the Capacity tab to see each machine's 1-week to 6-month band.",
+    }
+
+
+def _capacity_decision(machine: dict[str, Any], decision: dict[str, Any], inv: dict[str, Any],
+                       index: int) -> Decision:
+    action = decision["action"]
+    urgent = machine["first_breach"] in {"now", "1 month"}
+    payload = {
+        "recommendation_id": f"capacity-{machine['resource']}-{action.lower()}",
+        "resource_id": machine["resource"],
+        "action": action,
+        "horizon": decision["horizon"],
+        "owner": inv.get("app_owner") or inv.get("owner_team", "unknown"),
+        "approval_required": True,
+        "evidence": {
+            "current_weekly_peak_pct": machine["current_peak"],
+            "p90_demand_pct_by_horizon": machine["p90"],
+            "trend_pct_per_month": machine["trend_per_month"],
+            "days_to_breach": machine["days_to_breach"],
+        },
+    }
+    return Decision(
+        id=f"capacity-{index}",
+        domain=CAPACITY,
+        domain_label=DOMAIN_LABELS[CAPACITY],
+        resource=machine["resource"],
+        resource_kind="virtual_machine",
+        application=inv.get("application", "unknown"),
+        provider=inv.get("cloud_provider", "unknown"),
+        environment=inv.get("environment", "unknown"),
+        action=action,
+        action_label=action_label(action),
+        tone=action_tone(action),
+        savings_usd=decision["savings_usd"],
+        monthly_cost_usd=machine["monthly_cost_usd"],
+        # Both decisions read a 90% bound: p90 for a breach, p10 for a floor.
+        confidence=0.9,
+        risk="high" if action != "COMMIT_CAPACITY" and urgent else "medium" if action == "PLAN_SCALE_UP" else "low",
+        reason=decision["reason"],
+        business_impact=("Outage risk if nothing changes." if action in {"PLAN_SCALE_UP", "SCALE_UP"}
+                         else "Lower unit price on capacity the forecast says will be used."),
+        metrics=[_metric("Peak now", f"{machine['current_peak']}%")]
+        + [_metric(f"p90 in {label}", f"{value}%") for label, value in machine["p90"].items()]
+        + [_metric("Trend", f"{machine['trend_per_month']:+} pts/month")],
+        lambda_function=infra_lambda_function(action),
+        action_payload=payload,
     )
 
 

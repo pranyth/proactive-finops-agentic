@@ -6,7 +6,14 @@ from typing import Any
 
 from agents.core import AgentAnswer
 from ai_finops.llm import LLMReasoner, LLMResult
-from ai_finops.storage import deployment_summary, ensure_ai_demo_data, profile, recommendation_rows
+from ai_finops.storage import (
+    CACHEABLE_INPUT_MIN,
+    VERBOSE_OUTPUT_TOKENS,
+    deployment_summary,
+    ensure_ai_demo_data,
+    profile,
+    recommendation_rows,
+)
 
 
 class AIFinOpsAnalystAgent:
@@ -88,7 +95,17 @@ class AIFinOpsAnalystAgent:
         if intent == "model_rightsizing":
             return [row for row in actionable if row["action"] in {"SWITCH_TO_SMALLER_MODEL", "REDUCE_OUTPUT_TOKENS"}][:8]
         if intent == "token_efficiency":
-            return [row for row in actionable if row["action"] in {"ENABLE_PROMPT_CACHING", "REDUCE_OUTPUT_TOKENS", "BATCH_REQUESTS"}][:8]
+            # Selected on the evidence of waste, not on which action the policy
+            # happened to pick: a workload with uncached repeated context or a
+            # runaway output length is a token problem whether the fix ends up
+            # being caching, an output cap or a cheaper model.
+            wasteful = [
+                row for row in actionable
+                if (not row["evidence"].get("prompt_cache_enabled")
+                    and row["evidence"].get("cacheable_input_ratio", 0) >= CACHEABLE_INPUT_MIN)
+                or row["evidence"].get("output_tokens_per_request", 0) > VERBOSE_OUTPUT_TOKENS
+            ]
+            return sorted(wasteful, key=lambda row: row["estimated_monthly_savings_usd"], reverse=True)[:8]
         if intent == "quality_risk":
             high_risk = [row for row in recs if row["criticality"] == "high" or row["quality_risk"] == "medium"]
             return high_risk[:8]

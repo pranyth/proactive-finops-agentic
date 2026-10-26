@@ -301,50 +301,165 @@ def _generate_usage(conn: sqlite3.Connection) -> None:
     conn.executemany("INSERT INTO ai_incidents (deployment_id, opened_at, severity, incident_type, summary, status) VALUES (?, ?, ?, ?, ?, ?)", incidents)
 
 
+# Thresholds are the AI-service equivalent of the VM analyst's percentile gates:
+# every one is checked against a measured column, never against a deployment name.
+UNUSED_REQUESTS_30D = 1_000      # a reserved tier serving <~33 requests/day is parked
+MIN_ACTIONABLE_COST_USD = 100.0  # below this the change costs more than it saves
+CACHEABLE_INPUT_MIN = 0.40       # repeated prompt context worth caching
+QUALITY_HEADROOM_MIN = 0.04      # slack over the floor before a model change is fair
+VERBOSE_OUTPUT_TOKENS = 1_200    # average completion length that suggests no output cap
+BATCH_TOLERANT_LATENCY_MS = 4_000  # already answering slowly, so batching costs nothing
+# A change that can alter what the model returns has to be worth clearly more
+# than a change that cannot. Without this the cheapest model always wins and the
+# agent stops proposing caching or batching at all, which is not how a FinOps
+# team actually sequences work: take the free win first, take the risky one only
+# when it is decisively bigger.
+RISK_PREMIUM = 2.0
+
+
+def _model_catalog(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    return {
+        row["model_key"]: dict(row)
+        for row in conn.execute(
+            "SELECT m.model_key, m.display_name, m.service_id, m.model_tier,"
+            " m.input_cost_per_million, m.output_cost_per_million, m.quality_index FROM ai_models m"
+        )
+    }
+
+
+def _blended_cost(model: dict[str, Any], input_tokens: float, output_tokens: float) -> float:
+    return (input_tokens * model["input_cost_per_million"]
+            + output_tokens * model["output_cost_per_million"]) / 1_000_000
+
+
+def _cheaper_model(catalog: dict[str, dict[str, Any]], current_key: str, quality_floor: float,
+                   input_tokens: float, output_tokens: float) -> tuple[str | None, float]:
+    """Cheapest model in the same service whose quality index still clears the floor.
+
+    Savings come from the published token rates applied to this deployment's own
+    30-day token mix, so an output-heavy workload and an input-heavy one on the
+    same model switch do not get credited the same percentage.
+    """
+    current = catalog.get(current_key)
+    if not current:
+        return None, 0.0
+    current_cost = _blended_cost(current, input_tokens, output_tokens)
+    if current_cost <= 0:
+        return None, 0.0
+    candidates = [
+        (key, _blended_cost(model, input_tokens, output_tokens))
+        for key, model in catalog.items()
+        if key != current_key
+        and model["service_id"] == current["service_id"]
+        and model["quality_index"] >= quality_floor
+    ]
+    if not candidates:
+        return None, 0.0
+    key, cost = min(candidates, key=lambda item: item[1])
+    if cost >= current_cost:
+        return None, 0.0
+    return key, round(1.0 - cost / current_cost, 4)
+
+
 def _generate_recommendations(conn: sqlite3.Connection) -> None:
+    """Derive one action per deployment from measured usage, quality and price.
+
+    Order is risk-ascending inside two hard safety gates: a deployment already
+    under its quality floor gets remediation and no cost action at all, and a
+    high-criticality or thin-headroom workload is never offered a model change.
+    Within what is left the largest supported saving wins, which is the same
+    rule the console uses to rank the merged estate list.
+    """
     rows = deployment_summary(conn)
+    catalog = _model_catalog(conn)
     now = datetime.utcnow().isoformat(timespec="seconds")
     recommendations = []
     for row in rows:
-        action = "NO_ACTION"
-        target = None
-        savings_rate = 0.0
+        cost = float(row["monthly_cost_usd"] or 0.0)
+        requests = int(row["requests_30d"] or 0)
+        input_tokens = float(row["input_tokens_30d"] or 0.0)
+        output_tokens = float(row["output_tokens_30d"] or 0.0)
+        headroom = float(row["quality_score"]) - float(row["quality_floor"])
+        output_per_request = output_tokens / max(requests, 1)
+        cacheable = float(row["cacheable_input_ratio"] or 0.0)
+        reserved = row["service_tier"] == "reserved"
+        nonprod = row["environment"] != "prod"
+
+        action, target, savings_rate = "NO_ACTION", None, 0.0
         quality_risk = "low"
-        impact = "No change required; continue monitoring cost, quality and latency."
         reason = "Usage, cost, quality and reliability are within the configured operating envelope."
-        if row["deployment_key"] == "bedrock-legacy-poc":
+        impact = "No change required; continue monitoring cost, quality and latency."
+
+        if float(row["quality_score"]) < float(row["quality_floor"]):
+            # Safety gate: never propose a cost cut on a workload already
+            # failing the quality bar it was signed off against.
+            action, quality_risk = "QUALITY_REMEDIATION", "high"
+            reason = (f"Answer quality {row['quality_score']:.3f} is below the agreed floor "
+                      f"{row['quality_floor']:.2f}; cost optimisation is withheld until it recovers.")
+            impact = "Investigate prompt or model regression before any cost change."
+        elif reserved and requests < UNUSED_REQUESTS_30D:
             action, savings_rate = "SHUTDOWN_UNUSED_DEPLOYMENT", 0.95
-            reason = "The reserved non-production deployment receives almost no requests and has no critical dependency."
+            reason = (f"A reserved deployment served only {requests:,} requests in 30 days, "
+                      f"so almost all of the commitment is unused.")
             impact = "Remove idle commitment after owner confirmation."
-        elif row["deployment_key"] == "bedrock-dev-nonprod":
+        elif reserved and nonprod:
             action, savings_rate = "MOVE_TO_PAY_PER_USE", 0.38
-            reason = "A low-volume non-production workload is assigned to a reserved tier with long idle periods."
-            impact = "Lower fixed spend; small cold-start or queueing trade-off is acceptable in non-production."
-        elif row["deployment_key"] in {"bedrock-ticket-prod", "bedrock-summary-prod"}:
-            action = "SWITCH_TO_SMALLER_MODEL"
-            target = "bedrock-nova-lite" if row["deployment_key"] == "bedrock-ticket-prod" else "bedrock-haiku"
-            savings_rate = 0.72 if target == "bedrock-nova-lite" else 0.68
-            quality_risk = "medium"
-            reason = "The workload uses a premium model for a bounded classification/summarization task with quality headroom."
-            impact = "Run a canary evaluation before switching production traffic."
-        elif row["deployment_key"] == "bedrock-support-prod":
-            action, savings_rate = "ENABLE_PROMPT_CACHING", 0.17
-            reason = "Repeated support policy context makes a large share of input tokens cacheable, but caching is disabled."
-            impact = "Reduce repeated input-token cost without changing the model or answer quality."
-        elif row["deployment_key"] == "vertex-batch-prod":
-            action, savings_rate = "BATCH_REQUESTS", 0.45
-            reason = "The workload runs overnight and has no interactive latency requirement, making batch inference appropriate."
-            impact = "Longer completion window in exchange for lower inference cost."
-        elif row["deployment_key"] == "azure-marketing-dev":
-            action, target, savings_rate = "REDUCE_OUTPUT_TOKENS", "azure-gpt-mini", 0.64
-            reason = "Average output size is high for non-production marketing drafts and the premium model exceeds the quality requirement."
-            impact = "Set a smaller output budget and evaluate the efficient model on brand-quality checks."
-            quality_risk = "medium"
-        elif row["deployment_key"] == "azure-risk-prod":
-            action = "NO_ACTION"
-            reason = "High-criticality risk review meets its quality floor; aggressive model changes are not justified by current evidence."
-            impact = "Keep the current model and require human approval for future optimization."
-        monthly_savings = round(row["monthly_cost_usd"] * savings_rate, 2)
+            reason = (f"A non-production workload at {requests:,} requests sits on a reserved tier "
+                      f"with long idle periods.")
+            impact = "Lower fixed spend; small cold-start trade-off is acceptable outside production."
+        elif cost >= MIN_ACTIONABLE_COST_USD:
+            options = []
+            if not row["prompt_cache_enabled"] and cacheable >= CACHEABLE_INPUT_MIN:
+                current = catalog.get(row["model_key"])
+                input_cost = (input_tokens * current["input_cost_per_million"] / 1_000_000) if current else 0.0
+                # Cached input bills at 10% of the input rate, so the saving is
+                # 90% of the cacheable share of this deployment's input spend.
+                options.append((
+                    round((input_cost * cacheable * 0.90) / cost, 4), "ENABLE_PROMPT_CACHING", None, "low",
+                    f"{cacheable:.0%} of input tokens are repeated context and prompt caching is disabled.",
+                    "Reduce repeated input-token cost without changing the model or answer quality.",
+                ))
+            if float(row["latency_p95_ms"] or 0.0) >= BATCH_TOLERANT_LATENCY_MS:
+                options.append((
+                    0.45, "BATCH_REQUESTS", None, "low",
+                    f"p95 latency is already {row['latency_p95_ms']:,.0f} ms, so the workload has no "
+                    f"interactive latency requirement and suits batch inference.",
+                    "Longer completion window in exchange for lower inference cost.",
+                ))
+            # Second safety gate: anything that changes what the model returns is
+            # only offered where there is measured quality slack and no
+            # high-criticality blast radius.
+            if headroom >= QUALITY_HEADROOM_MIN and row["criticality"] != "high":
+                if output_per_request > VERBOSE_OUTPUT_TOKENS and nonprod:
+                    options.append((
+                        0.40, "REDUCE_OUTPUT_TOKENS", None, "medium",
+                        f"Non-production responses average {output_per_request:,.0f} output tokens with "
+                        f"{headroom:.3f} quality headroom, so no output budget is being enforced.",
+                        "Set a smaller output budget and re-check brand quality.",
+                    ))
+                key, rate = _cheaper_model(catalog, row["model_key"], float(row["quality_floor"]),
+                                           input_tokens, output_tokens)
+                if key:
+                    options.append((
+                        rate, "SWITCH_TO_SMALLER_MODEL", key, "medium",
+                        f"{catalog[key]['display_name']} clears the "
+                        f"{row['quality_floor']:.2f} quality floor at a lower token rate, and this workload has "
+                        f"{headroom:.3f} of measured headroom.",
+                        "Run a canary evaluation before switching production traffic.",
+                    ))
+            if options:
+                safe = max((o for o in options if o[3] == "low"), key=lambda o: o[0], default=None)
+                bold = max((o for o in options if o[3] != "low"), key=lambda o: o[0], default=None)
+                if safe and bold:
+                    chosen = bold if bold[0] >= safe[0] * RISK_PREMIUM else safe
+                else:
+                    chosen = safe or bold
+                savings_rate, action, target, quality_risk, reason, impact = chosen
+        elif cost > 0:
+            reason = (f"Monthly spend of ${cost:,.2f} is below the ${MIN_ACTIONABLE_COST_USD:,.0f} "
+                      f"threshold where an optimisation change pays for the engineering effort.")
+
+        monthly_savings = round(cost * savings_rate, 2)
         confidence = 94.0 if action == "SHUTDOWN_UNUSED_DEPLOYMENT" else (88.0 if action in {"ENABLE_PROMPT_CACHING", "BATCH_REQUESTS"} else 82.0)
         evidence = {
             "requests_30d": row["requests_30d"],
@@ -353,9 +468,14 @@ def _generate_recommendations(conn: sqlite3.Connection) -> None:
             "monthly_cost_usd": row["monthly_cost_usd"],
             "quality_score": row["quality_score"],
             "quality_floor": row["quality_floor"],
+            "quality_headroom": round(headroom, 4),
+            "output_tokens_per_request": round(output_per_request, 1),
             "latency_p95_ms": row["latency_p95_ms"],
             "error_rate_pct": row["error_rate_pct"],
             "cacheable_input_ratio": row["cacheable_input_ratio"],
+            "prompt_cache_enabled": bool(row["prompt_cache_enabled"]),
+            "service_tier": row["service_tier"],
+            "applied_savings_rate": savings_rate,
         }
         recommendations.append((
             f"rec-{row['deployment_key']}", row["deployment_id"], action, target, reason,

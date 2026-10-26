@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from agents import datacache, fleet, forecasting
+from agents import capacity, datacache, fleet, forecasting
 from agents.meeting2 import bootstrap_meeting2
 from agents.storage import DB_PATH, get_connection, init_db, table_count
 from agents.unified import UnifiedFinOpsAgent, suggestions_for
@@ -71,6 +71,7 @@ def warm_caches() -> None:
     # Each forecast fits two models and takes ~20s, so this runs on a background
     # thread. The endpoint reports `warming` until it lands.
     forecasting.warm_fleet_forecast()
+    capacity.warm_fleet_capacity()
 
 
 app = FastAPI(
@@ -230,6 +231,23 @@ def forecast_resource(resource_id: str) -> dict[str, Any]:
     if not result:
         raise HTTPException(status_code=404, detail=f"No forecast available for {resource_id}")
     return json_safe(result)
+
+
+@app.get("/api/capacity/summary")
+def capacity_summary() -> dict[str, Any]:
+    """Every machine's p90 demand 1 week, 1 month, 3 months and 6 months out."""
+    if capacity.is_warming():
+        return {"warming": True, "machines": [], "covered": 0}
+    return json_safe({"warming": False, **capacity.fleet_capacity()})
+
+
+@app.get("/api/capacity/{resource_id}")
+def capacity_resource(resource_id: str) -> dict[str, Any]:
+    """History, p10/p50/p90 bands per horizon, and the decisions they feed."""
+    plan = capacity.capacity_plan(resource_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"No capacity history for {resource_id}")
+    return json_safe(plan)
 
 
 @app.get("/api/ai-finops/summary")

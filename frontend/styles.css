@@ -227,6 +227,20 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 28px clamp(16px, 3vw, 
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .dot.infrastructure { background: var(--series-1); }
 .dot.ai_services    { background: var(--series-2); }
+.dot.capacity       { background: var(--series-3); }
+.data-table td.is-hot { color: var(--critical); font-weight: 600; }
+.data-table .muted  { color: var(--muted); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 4px 0 16px; }
+.chip.is-active { color: var(--ink); border-color: var(--ink-2); font-weight: 600; }
+.story-caption { color: var(--ink-2); margin: -6px 0 16px; }
+.plan-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.plan-step { background: var(--surface-2); border-radius: 8px; padding: 12px 13px; border-top: 3px solid var(--good); }
+.plan-step.is-warn { border-top-color: var(--critical); }
+.plan-step small { display: block; color: var(--ink-2); font-size: 12px; }
+.plan-step strong { display: block; font-size: 20px; font-weight: 600; margin-top: 4px; }
+.plan-step em { display: block; font-style: normal; color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+.plan-step .status { display: block; font-size: 12.5px; font-weight: 600; margin-top: 8px; }
+.plan-step .action { font-size: 13px; margin-top: 4px; color: var(--ink); }
 .dot.all            { background: var(--series-3); }
 
 .status { color: var(--muted); font-size: 13px; margin-top: 14px; }
@@ -472,3 +486,6 @@ pre {
   .decision { grid-template-columns: 4px minmax(0, 1fr); }
   .decision-value { grid-column: 2; text-align: left; padding: 0 0 16px; }
 }
+
+.kpi-select { margin-top: 10px; width: 100%; padding: 6px 8px; border-radius: 6px;
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--border-firm); font-size: 13px; }
